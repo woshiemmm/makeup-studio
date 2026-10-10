@@ -1,0 +1,1151 @@
+/* ============================================================
+ * vision.js — 妆容识别 / 肤质分析 / AI 接口 / 配图 SVG 渲染
+ * 全部挂在 window.VISION 命名空间下，供 app.js 调用
+ * ============================================================ */
+window.VISION = (function () {
+  'use strict';
+
+  /* ============ 配置（localStorage 持久化） ============ */
+  const CONFIG_KEY = 'makeup_ai_config_v3';
+  const PROXY_BASE = 'http://127.0.0.1:8787/v1';
+  const SITE_API = '/api';
+  const PROVIDERS = {
+    cloudflare: { base: SITE_API, model: 'deepseek-flash', type: 'openai', label: '本站服务器（Cloudflare 代理）', noKey: true },
+    'deepseek-local': { base: PROXY_BASE, model: 'deepseek-flash', type: 'openai', label: 'DeepSeek 本地代理' },
+    deepseek: { base: 'https://api.deepseek.com', model: 'deepseek-flash', type: 'openai', label: 'DeepSeek 官方 API（直连）' },
+    openai: { base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', type: 'openai', label: 'OpenAI' },
+    qwen: { base: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-vl-max', type: 'openai', label: '通义千问 DashScope' },
+    gemini: { base: '', model: 'gemini-1.5-flash', type: 'gemini', label: 'Google Gemini' },
+    custom: { base: 'https://api.deepseek.com', model: 'deepseek-flash', type: 'openai', label: '自定义 OpenAI 兼容接口' }
+  };
+
+  /* 判断当前是否运行在「本机」环境（file:// 或 localhost） */
+  function isLocalEnv() {
+    try {
+      if (typeof location === 'undefined') return true;
+      if (location.protocol === 'file:') return true;
+      const h = location.hostname;
+      return h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0';
+    } catch (e) { return true; }
+  }
+
+  /* 本地版默认走本地代理；公网版默认走本站 Cloudflare 代理 */
+  function defaultConfig() {
+    const key = isLocalEnv() ? 'deepseek-local' : 'cloudflare';
+    const d = PROVIDERS[key];
+    return {
+      mode: 'auto', provider: key, key: '', accessCode: '', base: d.base, model: d.model,
+      detail: 'high',        // 'low' = 512×512 低精度，更省 token
+      maxImageSize: 1024,    // 上传前缩放的最大边长
+      maxTokens: 800,        // 输出上限，按需调小更省钱
+      cache: true            // 同一张图不重复请求
+    };
+  }
+  function loadConfig() {
+    try {
+      const raw = localStorage.getItem(CONFIG_KEY);
+      if (raw) return Object.assign(defaultConfig(), JSON.parse(raw));
+    } catch (e) { /* ignore */ }
+    return defaultConfig();
+  }
+  function saveConfig(cfg) {
+    try { localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg)); } catch (e) { /* ignore */ }
+  }
+
+  /* ============ 图片读取 ============ */
+  function fileToDataURL(file) {
+    return new Promise(function (resolve, reject) {
+      const r = new FileReader();
+      r.onload = function () { resolve(r.result); };
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+  }
+
+  /* 发送给 API 前先缩放：模型内部反正会缩到 ~1300px，原图直传纯属浪费带宽与时间 */
+  function prepareForAPI(img, maxSize, quality) {
+    try {
+      const w = img.naturalWidth || img.width || 0;
+      const h = img.naturalHeight || img.height || 0;
+      if (!w || !h) return img.src || '';
+      const limit = maxSize || 1024;
+      // 已经足够小就不动它
+      if (Math.max(w, h) <= limit) return img.src || '';
+      const scale = limit / Math.max(w, h);
+      const cw = Math.max(1, Math.round(w * scale));
+      const ch = Math.max(1, Math.round(h * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = cw;
+      canvas.height = ch;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, cw, ch);
+      return canvas.toDataURL('image/jpeg', quality || 0.85);
+    } catch (e) {
+      return img.src || '';
+    }
+  }
+
+  /* 结果缓存：同一张图不重复调用 API */
+  const cache = new Map();
+  const CACHE_MAX = 30;
+
+  function hashString(s) {
+    let h = 5381;
+    for (let i = 0; i < s.length; i += 97) {          // 抽样，够用且快
+      h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    }
+    return (h >>> 0).toString(36) + '_' + s.length;
+  }
+  function cacheGet(k) { return cache.has(k) ? cache.get(k) : null; }
+  function cacheSet(k, v) {
+    if (cache.size >= CACHE_MAX) {
+      const first = cache.keys().next().value;
+      cache.delete(first);
+    }
+    cache.set(k, v);
+  }
+
+  /* 把图片压成小巧的 JPEG dataURL，便于存进浏览器本地存储 */
+  function compressImage(img, maxSize, quality) {
+    try {
+      const w = img.naturalWidth || img.width || 0;
+      const h = img.naturalHeight || img.height || 0;
+      if (!w || !h) return img.src || '';
+      const limit = maxSize || 420;
+      const scale = Math.min(1, limit / Math.max(w, h));
+      const cw = Math.max(1, Math.round(w * scale));
+      const ch = Math.max(1, Math.round(h * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = cw;
+      canvas.height = ch;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';           // JPEG 无透明通道，先铺白底
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.drawImage(img, 0, 0, cw, ch);
+      return canvas.toDataURL('image/jpeg', quality || 0.72);
+    } catch (e) {
+      return img.src || '';
+    }
+  }
+
+  /* ============ 颜色分析（演示模式核心） ============ */
+  function analyzeColors(img) {
+    const size = 48;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, size, size);
+    let data;
+    try { data = ctx.getImageData(0, 0, size, size).data; }
+    catch (e) { return null; }
+
+    let r = 0, g = 0, b = 0, n = 0;
+    let maxR = 0, maxG = 0, maxB = 0, sumSat = 0, sumVal = 0;
+    const buckets = { red: 0, orange: 0, yellow: 0, green: 0, blue: 0, purple: 0, pink: 0, neutral: 0, dark: 0 };
+
+    for (let i = 0; i < data.length; i += 4) {
+      const pr = data[i], pg = data[i + 1], pb = data[i + 2];
+      r += pr; g += pg; b += pb; n++;
+      maxR = Math.max(maxR, pr); maxG = Math.max(maxG, pg); maxB = Math.max(maxB, pb);
+
+      // RGB -> HSV
+      const rn = pr / 255, gn = pg / 255, bn = pb / 255;
+      const mx = Math.max(rn, gn, bn), mn = Math.min(rn, gn, bn);
+      const d = mx - mn;
+      const v = mx;
+      const s = mx === 0 ? 0 : d / mx;
+      let h = 0;
+      if (d !== 0) {
+        if (mx === rn) h = ((gn - bn) / d) % 6;
+        else if (mx === gn) h = (bn - rn) / d + 2;
+        else h = (rn - gn) / d + 4;
+        h *= 60; if (h < 0) h += 360;
+      }
+      sumSat += s; sumVal += v;
+
+      // 分桶
+      const lum = (pr + pg + pb) / 3;
+      if (lum < 50) { buckets.dark++; continue; }
+      if (s < 0.14) { buckets.neutral++; continue; }
+      if (h < 15 || h >= 345) buckets.red++;
+      else if (h < 45) buckets.orange++;
+      else if (h < 70) buckets.yellow++;
+      else if (h < 165) buckets.green++;
+      else if (h < 250) buckets.blue++;
+      else if (h < 300) buckets.purple++;
+      else if (h < 345) buckets.pink++;
+    }
+
+    const avg = { r: r / n, g: g / n, b: b / n };
+    const avgSat = sumSat / n, avgVal = sumVal / n;
+    const brightness = (avg.r + avg.g + avg.b) / 3;
+
+    // 主色调
+    let dominant = 'neutral', top = 0;
+    for (const k in buckets) if (buckets[k] > top) { top = buckets[k]; dominant = k; }
+
+    const warm = buckets.red + buckets.orange + buckets.pink + buckets.yellow;
+    const cool = buckets.blue + buckets.purple + buckets.green;
+    const warmRatio = warm / Math.max(1, warm + cool);
+
+    return { avg, brightness, avgSat, avgVal, buckets, dominant, warmRatio, topCount: top };
+  }
+
+  /* ============ 颜色 → 妆容匹配（演示模式） ============ */
+  function matchLookByColor(analysis) {
+    if (!analysis) return null;
+    const b = analysis.buckets;
+    const bright = analysis.brightness;
+    const dark = b.dark;
+    const total = Math.max(1, Object.values(b).reduce(function (a, x) { return a + x; }, 0));
+    const darkRatio = dark / total;
+    const pinkRatio = b.pink / total, redRatio = b.red / total, orangeRatio = b.orange / total;
+    const neutralRatio = b.neutral / total;
+
+    const scores = {
+      smokey: darkRatio * 100 + (analysis.avgSat < 0.3 ? 30 : 0),
+      western: (b.orange + b.yellow) / total * 70 + (darkRatio * 20) + (analysis.warmRatio * 20),
+      chinese: redRatio * 90 + (analysis.avgSat > 0.4 ? 25 : 0),
+      sweet: pinkRatio * 90 + redRatio * 40 + (bright > 160 ? 15 : 0),
+      japanese: orangeRatio * 85 + b.yellow / total * 30 + (bright > 150 ? 15 : 0),
+      korean: pinkRatio * 50 + neutralRatio * 40 + (bright > 180 ? 25 : 0),
+      natural: neutralRatio * 80 + (bright > 170 ? 20 : 0) + (analysis.avgSat < 0.25 ? 15 : 0),
+      daily: (b.orange + b.yellow + neutralRatio * 100) / total * 40 + (bright > 130 ? 15 : 0)
+    };
+
+    // 选最高分
+    let best = null;
+    for (const k in scores) { if (!best || scores[k] > best.score) best = { lookId: k, score: scores[k] }; }
+
+    // 置信度归一化
+    const confidence = Math.min(0.98, Math.max(0.42, best.score / 100));
+    const reason = describeColors(analysis);
+    return { lookId: best.lookId, confidence, reason, analysis };
+  }
+
+  function describeColors(analysis) {
+    const map = { red: '正红/酒红', orange: '橘橙/古铜', yellow: '金黄', green: '绿色调', blue: '蓝紫色调', purple: '紫色调', pink: '粉色/玫瑰', neutral: '低饱和自然色', dark: '深色/暗调' };
+    const warmCool = analysis.warmRatio > 0.6 ? '暖调' : (analysis.warmRatio < 0.4 ? '冷调' : '中性调');
+    const brightDesc = analysis.brightness > 180 ? '明亮' : (analysis.brightness < 90 ? '偏暗' : '中等亮度');
+    return '主色调为「' + (map[analysis.dominant] || analysis.dominant) + '」，整体呈' + warmCool + '、' + brightDesc + '，饱和度' + (analysis.avgSat > 0.45 ? '较高' : (analysis.avgSat > 0.2 ? '适中' : '偏低')) + '。';
+  }
+
+  /* ============ 肤质分析（演示模式规则引擎） ============ */
+  function analyzeSkinByRules(answers, faceAnalysis) {
+    const R = window.MAKEUP_DATA.skinRules;
+    const out = {
+      skinType: R.skinType[answers.skinType] || R.skinType.normal,
+      undertone: R.undertone[answers.undertone] || '',
+      depth: R.depth[answers.depth] || '',
+      concerns: (answers.concerns || []).map(function (c) { return R.concerns[c]; }).filter(Boolean),
+      sensitive: R.sensitive[answers.sensitive] || '',
+      climate: R.climate[answers.climate] || '',
+      image: null
+    };
+
+    // 结合图片明暗/泛红做补充
+    if (faceAnalysis) {
+      const extra = [];
+      if (faceAnalysis.brightness < 105) extra.push('照片整体偏暗，可能存在肤色暗沉，建议妆前用提亮妆前/紫色隔离提气色。');
+      if (faceAnalysis.brightness > 200) extra.push('照片整体偏亮，肤感通透，妆容可保持清透光泽。');
+      if (faceAnalysis.buckets.red + faceAnalysis.buckets.pink > 0) {
+        const redShare = (faceAnalysis.buckets.red + faceAnalysis.buckets.pink) / Math.max(1, Object.values(faceAnalysis.buckets).reduce(function (a, x) { return a + x; }, 0));
+        if (redShare > 0.4) extra.push('照片红色调明显，若有泛红/红血丝，可用绿色妆前或绿色遮瑕局部中和。');
+      }
+      if (faceAnalysis.avgSat < 0.18) extra.push('照片色彩偏灰，皮肤可能显暗沉，建议加强补水与提亮。');
+      out.image = extra;
+    }
+    return out;
+  }
+
+  /* ============ AI 接口调用 ============ */
+  // Key 存在服务端的供应商（如 Cloudflare 代理）不需要浏览器提供 Key
+  function hasApi(cfg) {
+    if (!cfg || !cfg.model) return false;
+    const p = PROVIDERS[cfg.provider];
+    if (p && p.noKey) return true;
+    return !!cfg.key;
+  }
+  function isLocalProxy(cfg) { return !!(cfg && cfg.provider === 'deepseek-local'); }
+  function needsBrowserKey(cfg) {
+    const p = PROVIDERS[cfg && cfg.provider];
+    return !(p && p.noKey);
+  }
+
+  function authHeaders(cfg) {
+    const h = { 'Content-Type': 'application/json' };
+    if (cfg.key) h['Authorization'] = 'Bearer ' + cfg.key;
+    if (cfg.accessCode) h['x-access-code'] = cfg.accessCode;
+    return h;
+  }
+
+  async function safeText(res) {
+    try { return (await res.text()).slice(0, 300); } catch (e) { return ''; }
+  }
+
+  function apiBase(cfg) {
+    const provider = PROVIDERS[cfg.provider] || PROVIDERS.custom;
+    return (cfg.base || provider.base || '').replace(/\/+$/, '');
+  }
+
+  // 统一的 POST：把网络 / CORS / 鉴权失败翻译成可操作的中文提示
+  async function postJSON(url, headers, body) {
+    let res;
+    try {
+      res = await fetch(url, { method: 'POST', headers: headers, body: JSON.stringify(body) });
+    } catch (e) {
+      const raw = (e && e.message) ? e.message : String(e);
+      let hint;
+      if (/^\/api\//.test(url) || /\/api\/chat\/completions$/.test(url)) {
+        hint = '本站 API 代理不可用。请确认已把 functions 目录一起部署到 Cloudflare Pages（Functions 不支持控制台拖拽上传，需用 Git 集成或 Wrangler）。';
+      } else if (/127\.0\.0\.1|localhost/.test(url)) {
+        hint = '本地代理未启动。请先双击 start.bat 启动本地服务（默认 http://127.0.0.1:8787），再重试。';
+      } else {
+        hint = '可能是网络不可达，或浏览器跨域（CORS）限制。建议改用「本站服务器」或「DeepSeek 本地代理」。';
+      }
+      throw new Error('无法连接接口：' + hint + '［' + raw + '］');
+    }
+    const text = await res.text();
+    if (!res.ok) {
+      let msg = text, code = '';
+      try {
+        const j = JSON.parse(text);
+        if (j && j.error) {
+          msg = j.error.message || j.error;
+          code = j.error.code || '';
+        }
+      } catch (e2) { /* 保留原始文本 */ }
+      const tip = res.status === 401 ? '（API Key 无效或未填写）'
+        : res.status === 402 ? '（账户余额不足）'
+        : res.status === 429 ? '（请求过于频繁，请稍后重试）'
+        : res.status === 404 ? '（接口地址或模型名不正确）' : '';
+      const err = new Error('接口返回 HTTP ' + res.status + tip + '：' + String(msg).slice(0, 300));
+      err.code = code;
+      err.status = res.status;
+      throw err;
+    }
+    try { return JSON.parse(text); }
+    catch (e3) { throw new Error('接口未返回合法 JSON：' + String(text).slice(0, 200)); }
+  }
+
+  async function callVisionAPI(imageDataURL, prompt, cfg) {
+    if (!cfg) cfg = loadConfig();
+    const provider = PROVIDERS[cfg.provider] || PROVIDERS.custom;
+
+    if (provider.type === 'gemini') {
+      const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+        encodeURIComponent(cfg.model) + ':generateContent?key=' + encodeURIComponent(cfg.key);
+      const mime = (imageDataURL.match(/^data:([^;]+);/) || [])[1] || 'image/jpeg';
+      const json = await postJSON(url, { 'Content-Type': 'application/json' }, {
+        contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: imageDataURL.split(',')[1] } }] }]
+      });
+      try {
+        return {
+          text: json.candidates[0].content.parts.map(function (p) { return p.text || ''; }).join('\n'),
+          usage: json.usageMetadata || null
+        };
+      } catch (e) { throw new Error('Gemini 返回格式异常'); }
+    }
+
+    // OpenAI 兼容协议：DeepSeek / OpenAI / 通义千问 / 本地代理 / 本站代理 均走这里
+    const imgPayload = { url: imageDataURL };
+    if (cfg.detail === 'low') imgPayload.detail = 'low';   // 低精度：缩到 512×512，更省 token
+
+    const json = await postJSON(apiBase(cfg) + '/chat/completions', authHeaders(cfg), {
+      model: cfg.model,
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: prompt },
+        { type: 'image_url', image_url: imgPayload }
+      ]}],
+      max_tokens: cfg.maxTokens || 800, temperature: 0.3
+    });
+    try {
+      return {
+        text: json.choices[0].message.content,
+        usage: json.usage || null
+      };
+    } catch (e) { throw new Error('接口返回格式异常，请确认模型支持图片输入（DeepSeek 请使用 deepseek-flash）。'); }
+  }
+
+  /* ============ 连接测试（设置页用） ============ */
+  /* 生成一张纯红色圆点的测试图，用来验证模型是否真的「看得见」 */
+  function makeTestImage() {
+    try {
+      const c = document.createElement('canvas');
+      c.width = 96; c.height = 96;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 96, 96);
+      ctx.fillStyle = '#e0334f';
+      ctx.beginPath();
+      ctx.arc(48, 48, 32, 0, Math.PI * 2);
+      ctx.fill();
+      return c.toDataURL('image/png');
+    } catch (e) { return ''; }
+  }
+
+  async function testConnection(cfg) {
+    if (!cfg) cfg = loadConfig();
+    const provider = PROVIDERS[cfg.provider] || PROVIDERS.custom;
+    const started = Date.now();
+
+    if (provider.type === 'gemini') {
+      const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+        encodeURIComponent(cfg.model) + ':generateContent?key=' + encodeURIComponent(cfg.key);
+      const json = await postJSON(url, { 'Content-Type': 'application/json' }, { contents: [{ parts: [{ text: 'ping' }] }] });
+      const ok = !!(json.candidates && json.candidates[0]);
+      return { ok: ok, ms: Date.now() - started, detail: ok ? 'Gemini 响应正常' : 'Gemini 返回结构异常' };
+    }
+
+    // 带上测试图，顺带验证「图片输入」是否被支持
+    const testImg = makeTestImage();
+    const messages = testImg ? [{
+      role: 'user',
+      content: [
+        { type: 'text', text: '这张图里主要是什么颜色？只回答颜色名称，不要解释。' },
+        { type: 'image_url', image_url: { url: testImg } }
+      ]
+    }] : [{ role: 'user', content: '请回复：连接成功' }];
+
+    const json = await postJSON(apiBase(cfg) + '/chat/completions', authHeaders(cfg),
+      { model: cfg.model, messages: messages, max_tokens: 64 });
+
+    const msg = (json.choices && json.choices[0] && json.choices[0].message) || {};
+    const reply = String(msg.content || '').trim();
+    const usage = json.usage ? ('，消耗 ' + (json.usage.total_tokens || '?') + ' tokens') : '';
+    const visionOk = testImg ? /红|red|红红/i.test(reply) : false;
+
+    let detail;
+    if (testImg && visionOk) {
+      detail = '连接正常，且图片识别可用 ✅（模型认出测试图是' + reply.slice(0, 8) + '）';
+    } else if (testImg && reply) {
+      detail = '连接正常，但图片识别可能有问题（模型回答「' + reply.slice(0, 20) +
+        '」，未识别出红色）。请确认模型是 deepseek-flash 这类支持图片的模型。';
+    } else if (testImg) {
+      detail = '连接正常（模型已响应，但未返回文字内容，可能是思考型模型的正常表现）';
+    } else {
+      detail = '连接正常' + (reply ? '，模型回复：「' + reply.slice(0, 20) + '」' : '');
+    }
+
+    return { ok: true, visionOk: visionOk, visionTested: !!testImg, ms: Date.now() - started, detail: detail + usage };
+  }
+
+  /* ============ 妆容识别（整合 API + 演示） ============ */
+  // 返回 { mode: 'api'|'demo', lookId, confidence, reason, apiText, analysis }
+  async function recognizeLook(img, cfg) {
+    if (!cfg) cfg = loadConfig();
+    const demo = matchLookByColor(analyzeColors(img));
+
+    const useApi = cfg.mode === 'api' || (cfg.mode === 'auto' && hasApi(cfg));
+    if (useApi) {
+      // 同一张图 + 同样配置 → 直接用缓存，不重复花钱
+      const cacheKey = 'rec|' + cfg.model + '|' + (cfg.detail || 'hi') + '|' + (cfg.maxImageSize || 1024) + '|' + hashString(img.src);
+      if (cfg.cache !== false) {
+        const hit = cacheGet(cacheKey);
+        if (hit) return Object.assign({}, hit, { cached: true });
+      }
+
+      const prompt = '请分析这张妆容图片，判断妆容风格/类型，并用中文简洁回答，包含：\n1. 妆容风格名称\n2. 整体色调\n3. 眼妆、唇妆、底妆的特点\n4. 适合场合\n5. 若要在以下风格中选择最接近的一个，请只回复其英文 id：natural(清透裸妆)、daily(日常通勤妆)、sweet(甜美约会妆)、korean(韩系水光妆)、japanese(日系元气妆)、western(欧美深邃妆)、smokey(晚宴烟熏妆)、chinese(中式古典妆)。';
+      try {
+        // 先缩放再上传：模型内部反正会缩，原图直传纯属浪费
+        const sent = prepareForAPI(img, cfg.maxImageSize || 1024, 0.85);
+        const resp = await callVisionAPI(sent, prompt, cfg);
+        const text = resp.text;
+        // 尝试从回复中提取 lookId
+        let lookId = null;
+        const ids = ['natural', 'daily', 'sweet', 'korean', 'japanese', 'western', 'smokey', 'chinese'];
+        for (const id of ids) {
+          const re = new RegExp('(^|[^a-z])' + id + '([^a-z]|$)', 'i');
+          if (re.test(text)) { lookId = id; break; }
+        }
+        const out = {
+          mode: 'api', lookId: lookId || (demo ? demo.lookId : 'natural'),
+          confidence: lookId ? 0.85 : (demo ? demo.confidence : 0.6),
+          reason: demo ? demo.reason : '', apiText: text,
+          analysis: demo ? demo.analysis : null,
+          usage: resp.usage, sentBytes: sent ? Math.round(sent.length * 0.75) : 0
+        };
+        if (cfg.cache !== false) cacheSet(cacheKey, out);
+        return out;
+      } catch (e) {
+        // 接口失败时退回本地颜色分析，保证功能不中断
+        if (demo) {
+          const needCode = e.code === 'ACCESS_CODE';
+          return {
+            mode: 'demo', lookId: demo.lookId, confidence: demo.confidence,
+            reason: demo.reason, apiText: '', analysis: demo.analysis,
+            error: needCode ? '' : e.message, needCode: needCode
+          };
+        }
+        throw e;
+      }
+    }
+
+    if (demo) return { mode: 'demo', lookId: demo.lookId, confidence: demo.confidence, reason: demo.reason, apiText: '', analysis: demo.analysis };
+    return { mode: 'demo', lookId: 'natural', confidence: 0.5, reason: '无法读取图片像素，已回退到默认推荐。', apiText: '', analysis: null };
+  }
+
+  /* ============ 肤质分析（整合 API + 演示） ============ */
+  async function analyzeSkin(faceImg, answers, cfg) {
+    if (!cfg) cfg = loadConfig();
+    const faceAnalysis = analyzeColors(faceImg);
+    const demo = analyzeSkinByRules(answers, faceAnalysis);
+
+    const useApi = cfg.mode === 'api' || (cfg.mode === 'auto' && hasApi(cfg));
+    if (useApi) {
+      const labelMap = { skinType: '肤质', undertone: '肤色基调', depth: '肤色深浅', concerns: '肌肤困扰', sensitive: '是否敏感', climate: '当前气候' };
+      let q = '';
+      for (const k in answers) {
+        const v = Array.isArray(answers[k]) ? answers[k].join('、') : answers[k];
+        if (v) q += (labelMap[k] || k) + '：' + v + '\n';
+      }
+      const prompt = '请根据这张脸部照片和以下用户自述，分析其皮肤状态，并用中文给出：\n1. 肤质判断\n2. 底妆建议（妆前、粉底、遮瑕、定妆）\n3. 选色建议（粉底色号/腮红/口红）\n4. 遮瑕重点\n5. 妆后护肤与卸妆建议\n6. 需要避开的产品成分或注意事项\n\n用户自述：\n' + q;
+      const cacheKey = 'skin|' + cfg.model + '|' + (cfg.detail || 'hi') + '|' +
+        (cfg.maxImageSize || 1024) + '|' + hashString(faceImg.src) + '|' + JSON.stringify(answers);
+      if (cfg.cache !== false) {
+        const hit = cacheGet(cacheKey);
+        if (hit) return Object.assign({}, hit, { cached: true });
+      }
+      try {
+        const sent = prepareForAPI(faceImg, cfg.maxImageSize || 1024, 0.85);
+        const resp = await callVisionAPI(sent, prompt, cfg);
+        const out = { mode: 'api', demo: demo, apiText: resp.text, analysis: faceAnalysis, usage: resp.usage };
+        if (cfg.cache !== false) cacheSet(cacheKey, out);
+        return out;
+      } catch (e) {
+        const needCode = e.code === 'ACCESS_CODE';
+        return {
+          mode: 'demo', demo: demo, apiText: '', analysis: faceAnalysis,
+          error: needCode ? '' : e.message, needCode: needCode
+        };
+      }
+    }
+    return { mode: 'demo', demo: demo, apiText: '', analysis: faceAnalysis };
+  }
+
+  /* ============ 妆容推荐（肤质档案 + 照片分析 → 适合画什么） ============
+   * 打分维度：肤色基调 / 肤色深浅 / 肤质 / 肌肤困扰 / 敏感度 / 环境 + 照片明暗
+   * 每项 0–3 分，2 = 中性；>2 加分，<2 减分。冲突项单独扣分。
+   */
+  const LOOK_FIT = {
+    natural: {
+      name: '清透裸妆', note: '步骤最少、产品最薄，对皮肤负担最小',
+      undertone: { cool: 2, warm: 2, neutral: 3 },
+      depth: { fair: 3, light: 3, medium: 2, deep: 1 },
+      skin: { oily: 2, dry: 2, combo: 3, normal: 3, sensitive: 3 },
+      good: { acne: 3, redness: 2, pore: 1, fineLine: 1 },
+      bad: {}
+    },
+    daily: {
+      name: '日常通勤妆', note: '大地色系最百搭，持妆方案成熟',
+      undertone: { cool: 2, warm: 3, neutral: 3 },
+      depth: { fair: 2, light: 3, medium: 3, deep: 2 },
+      skin: { oily: 3, dry: 2, combo: 3, normal: 3, sensitive: 2 },
+      good: { acne: 3, darkCircle: 2, pore: 2, dull: 2 },
+      bad: {}
+    },
+    sweet: {
+      name: '甜美约会妆', note: '粉调柔美，显气色',
+      undertone: { cool: 3, warm: 2, neutral: 2 },
+      depth: { fair: 3, light: 3, medium: 2, deep: 1 },
+      skin: { oily: 1, dry: 2, combo: 2, normal: 3, sensitive: 2 },
+      good: { dull: 2, darkCircle: 1 },
+      bad: { redness: 2 }
+    },
+    korean: {
+      name: '韩系水光妆', note: '水光底妆能弱化干纹、显通透',
+      undertone: { cool: 3, warm: 1, neutral: 2 },
+      depth: { fair: 3, light: 3, medium: 2, deep: 1 },
+      skin: { oily: 0, dry: 3, combo: 2, normal: 3, sensitive: 2 },
+      good: { fineLine: 3, dull: 2, pore: 1 },
+      bad: { acne: 1 }
+    },
+    japanese: {
+      name: '日系元气妆', note: '蜜桃橘调最能提气色',
+      undertone: { cool: 1, warm: 3, neutral: 2 },
+      depth: { fair: 2, light: 3, medium: 3, deep: 2 },
+      skin: { oily: 2, dry: 2, combo: 2, normal: 3, sensitive: 2 },
+      good: { dull: 3, darkCircle: 2 },
+      bad: { redness: 1 }
+    },
+    western: {
+      name: '欧美深邃妆', note: '高遮瑕哑光 + 古铜修容，轮廓感强',
+      undertone: { cool: 2, warm: 3, neutral: 2 },
+      depth: { fair: 1, light: 2, medium: 3, deep: 3 },
+      skin: { oily: 3, dry: 1, combo: 2, normal: 2, sensitive: 1 },
+      good: { pore: 2, darkCircle: 2 },
+      bad: { fineLine: 2, acne: 1 }
+    },
+    smokey: {
+      name: '晚宴烟熏妆', note: '哑光高持妆，但用到的产品最多',
+      undertone: { cool: 2, warm: 2, neutral: 3 },
+      depth: { fair: 1, light: 2, medium: 3, deep: 3 },
+      skin: { oily: 3, dry: 0, combo: 2, normal: 2, sensitive: 0 },
+      good: {},
+      bad: { fineLine: 2, acne: 2, redness: 1 }
+    },
+    chinese: {
+      name: '中式古典妆', note: '朱红唇妆是点睛，但红调对泛红肌不友好',
+      undertone: { cool: 2, warm: 3, neutral: 3 },
+      depth: { fair: 2, light: 3, medium: 3, deep: 3 },
+      skin: { oily: 2, dry: 1, combo: 2, normal: 3, sensitive: 1 },
+      good: { darkCircle: 1 },
+      bad: { redness: 3 }
+    }
+  };
+
+  const UNDERTONE_TXT = {
+    cool: '冷调肤色，适合玫粉 / 梅子这类冷调色系',
+    warm: '暖调肤色，适合珊瑚 / 橘棕 / 砖红这类暖调色系',
+    neutral: '中性调肤色，冷暖色系都能驾驭'
+  };
+  const SKIN_TXT = {
+    oily: '油性肌，建议走哑光持妆路线',
+    dry: '干性肌，建议走水润光泽路线',
+    combo: '混合肌，可以分区处理（T 区控油、两颊保湿）',
+    normal: '中性肌，妆效选择很自由',
+    sensitive: '敏感肌，建议精简步骤、用温和产品'
+  };
+  const CONCERN_TXT = {
+    acne: '痘痘 / 痘印：轻薄透气的底妆不容易闷痘',
+    darkCircle: '黑眼圈：底妆遮瑕到位的妆容更遮得住',
+    pore: '毛孔粗大：哑光底妆对毛孔更友好',
+    fineLine: '细纹 / 干纹：水润光泽的妆效能弱化纹路',
+    dull: '暗沉发黄：明亮的暖色调能有效提气色',
+    redness: '泛红 / 红血丝：需要避开过红过暖的色系'
+  };
+
+  function recommendLooks(answers, faceAnalysis) {
+    const st = (answers && answers.skinType) || 'normal';
+    const ut = (answers && answers.undertone) || 'neutral';
+    const dp = (answers && answers.depth) || 'medium';
+    const concerns = (answers && answers.concerns) || [];
+    const sens = (answers && answers.sensitive) || 'no';
+    const clim = (answers && answers.climate) || 'normal';
+
+    const out = [];
+    Object.keys(LOOK_FIT).forEach(function (id) {
+      const f = LOOK_FIT[id];
+      let score = 50;
+      const pros = [];
+      const cons = [];
+
+      // 肤色基调
+      const us = f.undertone[ut] != null ? f.undertone[ut] : 2;
+      score += (us - 2) * 7;
+      if (us >= 3) pros.push(UNDERTONE_TXT[ut] + '，和这个妆容的色系很协调');
+      if (us <= 1) cons.push(UNDERTONE_TXT[ut] + '，这个妆容的色系偏得比较远');
+
+      // 肤色深浅
+      const ds = f.depth[dp] != null ? f.depth[dp] : 2;
+      score += (ds - 2) * 5;
+      if (ds <= 1) cons.push('这个妆容对肤色深浅的适配度一般，可能需要调整色号');
+
+      // 肤质
+      const ss = f.skin[st] != null ? f.skin[st] : 2;
+      score += (ss - 2) * 8;
+      if (ss >= 3) pros.push(SKIN_TXT[st] + '，这个妆容的妆效正好合适');
+      if (ss <= 1) cons.push(SKIN_TXT[st] + '，这个妆容的妆效可能不太合适');
+
+      // 肌肤困扰
+      concerns.forEach(function (c) {
+        if (f.good[c]) {
+          score += f.good[c] * 3;
+          if (f.good[c] >= 2) pros.push(CONCERN_TXT[c]);
+        }
+        if (f.bad[c]) {
+          score -= f.bad[c] * 5;
+          cons.push(CONCERN_TXT[c] + '，这个妆容要特别注意');
+        }
+      });
+
+      // 敏感肌
+      if (sens === 'yes') {
+        if (st === 'sensitive' || ss >= 3) { score += 4; pros.push('敏感肌友好：步骤少、产品少'); }
+        if (ss <= 1) { score -= 5; cons.push('敏感肌 + 大量眼妆产品，刺激风险较高'); }
+      } else if (sens === 'sometimes' && ss <= 1) {
+        score -= 2;
+      }
+
+      // 环境
+      if (clim === 'humid' && st === 'oily' && ss >= 3) { score += 2; pros.push('潮湿环境 + 油皮，这个妆容的持妆方案更稳'); }
+      if (clim === 'dry' && ss >= 3 && (id === 'korean' || id === 'natural')) { score += 2; pros.push('干燥环境下这个妆容更不容易卡粉'); }
+
+      // 照片分析补充
+      if (faceAnalysis) {
+        if (faceAnalysis.brightness < 105 && f.good.dull) {
+          score += 3;
+          pros.push('照片显示肤色偏暗，这个妆容的提亮色系能帮上忙');
+        }
+        if (faceAnalysis.brightness > 200 && (id === 'smokey' || id === 'western')) {
+          score -= 1;
+        }
+      }
+
+      out.push({
+        lookId: id,
+        name: f.name,
+        note: f.note,
+        score: Math.max(10, Math.min(98, Math.round(score))),
+        pros: pros.filter(Boolean).slice(0, 4),
+        cons: cons.filter(Boolean).slice(0, 3)
+      });
+    });
+
+    out.sort(function (a, b) { return b.score - a.score; });
+    return out;
+  }
+
+  /* ============ 配图 SVG 渲染 ============ */
+  function hexToRgb(hex) {
+    const h = (hex || '#e2557f').replace('#', '');
+    const full = h.length === 3 ? h.split('').map(function (c) { return c + c; }).join('') : h;
+    const num = parseInt(full, 16);
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+  function rgba(hex, a) { const c = hexToRgb(hex); return 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + a + ')'; }
+  /* 按倍率加深/提亮一个颜色，factor > 1 变亮，< 1 变暗 */
+  function rgbshade(hex, factor) {
+    const c = hexToRgb(hex);
+    const f = (factor == null ? 1 : factor);
+    const cl = function (v) { return Math.max(0, Math.min(255, Math.round(v * f))); };
+    return 'rgb(' + cl(c.r) + ',' + cl(c.g) + ',' + cl(c.b) + ')';
+  }
+  function escapeXmlText(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+  }
+
+  /* 阶段顺序 → 用于「累积进度」渲染：脸会随着步骤推进逐渐上妆 */
+  const STAGE_ORDER = ['prep', 'base', 'brow', 'eye', 'cheek', 'lip', 'finish', 'after'];
+  const ZONE = {
+    prep:   { x: 108, y: 74, w: 204, h: 272, label: '全脸 · 清洁 → 保湿 → 防晒 → 妆前乳' },
+    base:   { x: 112, y: 80, w: 196, h: 252, label: '全脸 · 粉底 → 遮瑕 → 定妆' },
+    brow:   { x: 130, y: 142, w: 160, h: 38, label: '眉部 · 眉头浅 / 眉峰 / 眉尾' },
+    eye:    { x: 128, y: 176, w: 164, h: 58, label: '眼部 · 打底 → 晕染 → 眼线 → 睫毛' },
+    cheek:  { x: 114, y: 216, w: 192, h: 62, label: '面颊 · 修容 / 腮红 / 高光' },
+    lip:    { x: 166, y: 260, w: 88, h: 50, label: '唇部 · 打底 → 勾勒 → 上色' },
+    finish: { x: 106, y: 72, w: 208, h: 276, label: '全脸 · 定妆喷雾 + 整体检查' },
+    after:  { x: 106, y: 72, w: 208, h: 276, label: '全脸 · 卸妆 → 清洁 → 舒缓补水' }
+  };
+
+  function stageFeatures(stageId) {
+    if (stageId === 'full') return { base: 1, brow: 1, eye: 1, cheek: 1, lip: 1, glow: 1 };
+    if (stageId === 'bare') return {};
+    if (stageId === 'after') return { clean: 1, glow: 1 };   // 妆后护肤：卸干净、水润
+    const i = STAGE_ORDER.indexOf(stageId);
+    if (i < 0) return {};
+    return { base: i >= 1, brow: i >= 2, eye: i >= 3, cheek: i >= 4, lip: i >= 5, glow: i >= 6 };
+  }
+
+  let svgCounter = 0;
+
+  /* 主配图：写实度更高的脸部示意，支持累积进度与区域标注 */
+  function renderFaceSVG(stageId, palette, opts) {
+    const p = (palette && palette.length ? palette : ['#e2557f', '#c4456c', '#f08aa8', '#d9a95c']);
+    const c1 = p[0], c2 = p[1] || p[0], c3 = p[2] || p[0];
+    const f = stageFeatures(stageId);
+    const uid = 's' + (++svgCounter);
+    const showZone = !(opts && opts.noZone) && !!ZONE[stageId];
+
+    // 肤色层次
+    const skin = '#fcdfcd', skinMid = '#f7ceb8', skinDeep = '#e7ae94', line = '#96706a';
+    const s = [];
+
+    s.push('<svg viewBox="0 0 420 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="妆容步骤配图">');
+    s.push('<defs>');
+    s.push('<linearGradient id="bg' + uid + '" x1="0" y1="0" x2="1" y2="1">'
+      + '<stop offset="0" stop-color="' + rgba(c3, 0.42) + '"/>'
+      + '<stop offset="1" stop-color="' + rgba(c1, 0.20) + '"/></linearGradient>');
+    s.push('<radialGradient id="skin' + uid + '" cx="0.5" cy="0.40" r="0.74">'
+      + '<stop offset="0" stop-color="' + skin + '"/>'
+      + '<stop offset="0.70" stop-color="' + skinMid + '"/>'
+      + '<stop offset="1" stop-color="' + skinDeep + '"/></radialGradient>');
+    s.push('<radialGradient id="iris' + uid + '" cx="0.5" cy="0.36" r="0.66">'
+      + '<stop offset="0" stop-color="#9a7250"/>'
+      + '<stop offset="0.62" stop-color="#5f4230"/>'
+      + '<stop offset="1" stop-color="#33231a"/></radialGradient>');
+    s.push('<linearGradient id="lipg' + uid + '" x1="0" y1="0" x2="0.3" y2="1">'
+      + '<stop offset="0" stop-color="' + rgbshade(c1, 1.10) + '"/>'
+      + '<stop offset="1" stop-color="' + rgbshade(c2, 0.90) + '"/></linearGradient>');
+    /* 腮红：中心浓、边缘完全透明 —— 才是「晕开」而不是一块色斑 */
+    s.push('<radialGradient id="blush' + uid + '" cx="0.5" cy="0.5" r="0.5">'
+      + '<stop offset="0" stop-color="' + rgba(c1, 0.52) + '"/>'
+      + '<stop offset="0.5" stop-color="' + rgba(c1, 0.26) + '"/>'
+      + '<stop offset="1" stop-color="' + rgba(c1, 0) + '"/></radialGradient>');
+    /* 修容：极淡的软阴影，取代之前的粗描边 */
+    s.push('<radialGradient id="contour' + uid + '" cx="0.5" cy="0.5" r="0.5">'
+      + '<stop offset="0" stop-color="' + rgba(rgbshade(c2, 0.60), 0.26) + '"/>'
+      + '<stop offset="0.6" stop-color="' + rgba(rgbshade(c2, 0.60), 0.12) + '"/>'
+      + '<stop offset="1" stop-color="' + rgba(rgbshade(c2, 0.60), 0) + '"/></radialGradient>');
+    /* 眼影：由睫毛根部向上渐隐 */
+    s.push('<linearGradient id="es' + uid + '" x1="0.1" y1="1" x2="0.3" y2="0">'
+      + '<stop offset="0" stop-color="' + rgba(c1, 0.60) + '"/>'
+      + '<stop offset="0.55" stop-color="' + rgba(c2, 0.32) + '"/>'
+      + '<stop offset="1" stop-color="' + rgba(c3, 0) + '"/></linearGradient>');
+    /* 高光：柔和光斑 */
+    s.push('<radialGradient id="hl' + uid + '" cx="0.5" cy="0.5" r="0.5">'
+      + '<stop offset="0" stop-color="rgba(255,255,255,0.52)"/>'
+      + '<stop offset="1" stop-color="rgba(255,255,255,0)"/></radialGradient>');
+    s.push('</defs>');
+
+    // 背景
+    s.push('<rect width="420" height="420" fill="url(#bg' + uid + ')"/>');
+    s.push('<circle cx="210" cy="192" r="152" fill="' + rgba('#ffffff', 0.30) + '"/>');
+
+    // 头发（在脸后面）
+    s.push('<path d="M96,206 C88,112 132,46 210,46 C288,46 332,112 324,206 '
+      + 'C322,182 316,166 308,156 C298,144 286,140 274,142 L272,120 '
+      + 'C238,100 182,100 148,120 L146,142 C134,140 122,144 112,156 C104,166 98,182 96,206 Z" '
+      + 'fill="' + rgbshade(c2, 0.86) + '" opacity="0.92"/>');
+
+    // 脖子 + 肩
+    s.push('<path d="M186,332 L186,364 C150,372 120,388 104,410 L316,410 C300,388 270,372 234,364 L234,332 Z" '
+      + 'fill="' + skinDeep + '"/>');
+
+    // 脸型（带下颌收窄）
+    s.push('<path d="M210,76 C266,76 300,118 302,176 C304,236 288,290 258,318 '
+      + 'C238,336 220,344 210,344 C200,344 182,336 162,318 C132,290 116,236 118,176 C120,118 154,76 210,76 Z" '
+      + 'fill="url(#skin' + uid + ')"/>');
+
+    // 耳朵
+    s.push('<ellipse cx="120" cy="206" rx="13" ry="21" fill="' + skinMid + '"/>');
+    s.push('<ellipse cx="300" cy="206" rx="13" ry="21" fill="' + skinMid + '"/>');
+    // 颧骨侧影
+    s.push('<path d="M124,206 C122,244 132,280 152,302" stroke="' + rgba(skinDeep, 0.45) + '" stroke-width="13" fill="none" stroke-linecap="round"/>');
+    s.push('<path d="M296,206 C298,244 288,280 268,302" stroke="' + rgba(skinDeep, 0.45) + '" stroke-width="13" fill="none" stroke-linecap="round"/>');
+
+    /* ---- 左侧五官（右侧用镜像复制，保证对称） ---- */
+    const EYE_X = 166, EYE_Y = 205, BROW_Y = 163;
+    const FACE_FONT = 'PingFang SC, Microsoft YaHei, sans-serif';
+    const EW = 22, EH = 11.5;   // 眼睛尺寸调到接近真人比例（原为脸宽的 31%，现约 24%）
+
+    function brow() {
+      const o = [];
+      if (f.brow) {
+        // 已画眉：柳叶形，眉尾收尖
+        o.push('<path d="M136,' + (BROW_Y + 5) + ' C150,' + (BROW_Y - 10) + ' 174,' + (BROW_Y - 12) + ' 198,' + (BROW_Y + 3)
+          + ' C184,' + (BROW_Y - 1) + ' 154,' + (BROW_Y - 3) + ' 136,' + (BROW_Y + 5) + ' Z" '
+          + 'fill="' + rgba(rgbshade(c2, 0.58), 0.80) + '"/>');
+        // 眉头压淡，避免整条一样深
+        o.push('<ellipse cx="142" cy="' + (BROW_Y + 1) + '" rx="12" ry="8" fill="' + rgba(skin, 0.40) + '"/>');
+        // 细毛流
+        for (let k = 0; k < 7; k++) {
+          const bx = 142 + k * 8.5;
+          const by = BROW_Y + 2 - Math.sin(k / 6 * Math.PI) * 7;
+          o.push('<path d="M' + bx + ',' + by + ' l3.5,-3.5" stroke="' + rgba(rgbshade(c2, 0.5), 0.5)
+            + '" stroke-width="1.2" stroke-linecap="round"/>');
+        }
+      } else {
+        // 素眉：更淡更柔
+        o.push('<path d="M140,' + (BROW_Y + 4) + ' C154,' + (BROW_Y - 7) + ' 176,' + (BROW_Y - 9) + ' 194,' + (BROW_Y + 2) + '" '
+          + 'stroke="' + rgba('#9c7a6c', 0.42) + '" stroke-width="4.2" fill="none" stroke-linecap="round"/>');
+      }
+      return o.join('');
+    }
+
+    function eye() {
+      const cx = EYE_X, cy = EYE_Y, o = [];
+      // 眼窝软阴影
+      o.push('<ellipse cx="' + cx + '" cy="' + (cy - 4) + '" rx="27" ry="15" fill="' + rgba(skinDeep, 0.20) + '"/>');
+      // 眼影（已上妆）：由睫毛根部向上渐隐
+      if (f.eye) {
+        o.push('<path d="M' + (cx - 24) + ',' + (cy + 2) + ' C' + (cx - 15) + ',' + (cy - 17) + ' ' + (cx + 9) + ',' + (cy - 18) + ' ' + (cx + 23) + ',' + (cy - 4)
+          + ' C' + (cx + 8) + ',' + (cy - 10) + ' ' + (cx - 10) + ',' + (cy - 4) + ' ' + (cx - 24) + ',' + (cy + 2) + ' Z" fill="url(#es' + uid + ')"/>');
+        // 眼尾加深
+        o.push('<ellipse cx="' + (cx + 16) + '" cy="' + (cy - 6) + '" rx="10" ry="7" fill="' + rgba(c1, 0.26) + '"/>');
+      }
+      // 眼白
+      o.push('<path d="M' + (cx - EW) + ',' + cy + ' C' + (cx - 13) + ',' + (cy - EH) + ' ' + (cx + 13) + ',' + (cy - EH) + ' ' + (cx + EW) + ',' + cy
+        + ' C' + (cx + 13) + ',' + (cy + EH - 2) + ' ' + (cx - 13) + ',' + (cy + EH - 2) + ' ' + (cx - EW) + ',' + cy + ' Z" fill="#fdfaf8"/>');
+      // 虹膜
+      o.push('<circle cx="' + cx + '" cy="' + cy + '" r="9.4" fill="url(#iris' + uid + ')"/>');
+      o.push('<circle cx="' + cx + '" cy="' + cy + '" r="3.9" fill="#1c1310"/>');
+      o.push('<circle cx="' + (cx - 3.4) + '" cy="' + (cy - 3.8) + '" r="2.7" fill="#ffffff" opacity="0.92"/>');
+      o.push('<circle cx="' + (cx + 3.8) + '" cy="' + (cy + 3.8) + '" r="1.4" fill="#ffffff" opacity="0.5"/>');
+      // 上眼睑：细，深棕而非纯黑
+      o.push('<path d="M' + (cx - EW) + ',' + cy + ' C' + (cx - 13) + ',' + (cy - EH) + ' ' + (cx + 13) + ',' + (cy - EH) + ' ' + (cx + EW) + ',' + cy
+        + '" stroke="#7a5a52" stroke-width="1.8" fill="none" stroke-linecap="round"/>');
+      // 双眼皮褶
+      o.push('<path d="M' + (cx - 16) + ',' + (cy - 8) + ' C' + (cx - 9) + ',' + (cy - 16) + ' ' + (cx + 9) + ',' + (cy - 16) + ' ' + (cx + 16) + ',' + (cy - 8)
+        + '" stroke="' + rgba('#9c7a72', 0.36) + '" stroke-width="1.2" fill="none" stroke-linecap="round"/>');
+      // 下眼睑：很淡
+      o.push('<path d="M' + (cx - 17) + ',' + (cy + 5) + ' C' + (cx - 9) + ',' + (cy + 10) + ' ' + (cx + 9) + ',' + (cy + 10) + ' ' + (cx + 17) + ',' + (cy + 5)
+        + '" stroke="' + rgba('#b08a80', 0.38) + '" stroke-width="1.1" fill="none" stroke-linecap="round"/>');
+      // 眼线 + 睫毛（已上妆）
+      if (f.eye) {
+        o.push('<path d="M' + (cx - EW - 1) + ',' + (cy + 0.4) + ' C' + (cx - 13) + ',' + (cy - EH - 0.8) + ' ' + (cx + 13) + ',' + (cy - EH - 0.8)
+          + ' ' + (cx + EW + 1) + ',' + (cy - 1.2) + ' C' + (cx + EW + 5) + ',' + (cy - 3) + ' ' + (cx + EW + 8) + ',' + (cy - 5.2) + ' ' + (cx + EW + 9) + ',' + (cy - 6.6) + '" '
+          + 'stroke="#3d2b30" stroke-width="1.9" fill="none" stroke-linecap="round"/>');
+        // 睫毛：细、扇形、只在上眼睑
+        for (let k = 0; k < 6; k++) {
+          const t = k / 5;
+          const lx = cx - 16 + k * 7.2;
+          const ly = cy - 9 + Math.abs(t - 0.5) * 3.4;
+          const len = 4.2 + Math.sin(t * Math.PI) * 2.2 + t * 3.4;
+          o.push('<path d="M' + lx + ',' + ly + ' q1.1,-' + (len * 0.55).toFixed(1) + ' 2.2,-' + len.toFixed(1) + '" '
+            + 'stroke="#3d2b30" stroke-width="1.15" fill="none" stroke-linecap="round" opacity="0.82"/>');
+        }
+      }
+      return o.join('');
+    }
+
+    function cheek() {
+      const o = [];
+      if (f.cheek) {
+        // 修容：极淡软阴影（不再用粗描边，避免像糊了泥）
+        o.push('<ellipse cx="144" cy="252" rx="33" ry="19" fill="url(#contour' + uid + ')" transform="rotate(-16 144 252)"/>');
+        // 腮红：径向渐变晕开
+        o.push('<ellipse cx="156" cy="240" rx="33" ry="23" fill="url(#blush' + uid + ')"/>');
+        // 高光：柔和光斑
+        o.push('<ellipse cx="152" cy="220" rx="24" ry="9" fill="url(#hl' + uid + ')"/>');
+      }
+      return o.join('');
+    }
+
+    const leftSide = function () { return brow() + eye() + cheek(); };
+    s.push('<g>' + leftSide() + '</g>');
+    s.push('<g transform="translate(420,0) scale(-1,1)">' + leftSide() + '</g>');
+
+    /* ---- 鼻子：只用柔和明暗，不画硬线与鼻孔（硬线 + 两个深色点会读成小胡子） ---- */
+    s.push('<path d="M205,202 C203,222 201,236 198,244" stroke="' + rgba(skinDeep, 0.28)
+      + '" stroke-width="9" fill="none" stroke-linecap="round"/>');
+    s.push('<ellipse cx="212" cy="214" rx="4.5" ry="17" fill="' + rgba('#ffffff', 0.24) + '"/>');
+    s.push('<ellipse cx="210" cy="246" rx="10" ry="4" fill="' + rgba(skinDeep, 0.16) + '"/>');
+
+    /* ---- 唇 ---- */
+    // 唇形：上唇有唇峰、下唇更饱满
+    const lipPath = 'M180,277 C188,268 199,263 210,270 C221,263 232,268 240,277 '
+      + 'C234,284 222,291 210,295 C198,291 186,284 180,277 Z';
+    if (f.lip) {
+      s.push('<path d="' + lipPath + '" fill="url(#lipg' + uid + ')"/>');
+      // 唇缝：淡，不能画成硬线
+      s.push('<path d="M180,277 C196,279.5 224,279.5 240,277" stroke="' + rgba('#8a4d52', 0.38)
+        + '" stroke-width="1.2" fill="none"/>');
+      // 下唇高光：柔光斑
+      s.push('<ellipse cx="210" cy="286" rx="15" ry="4.5" fill="' + rgba('#ffffff', 0.20) + '"/>');
+      if (stageId === 'lip') {
+        // 只在这一步显示唇峰与中线提示
+        s.push('<path d="M210,271 L210,293" stroke="' + rgba('#ffffff', 0.34) + '" stroke-width="1.1"/>');
+        s.push('<ellipse cx="196" cy="267" rx="5" ry="3" fill="' + rgba('#ffffff', 0.28) + '"/>');
+        s.push('<ellipse cx="224" cy="267" rx="5" ry="3" fill="' + rgba('#ffffff', 0.28) + '"/>');
+      }
+    } else {
+      s.push('<path d="' + lipPath + '" fill="#dba8a2"/>');
+      s.push('<path d="M180,277 C196,279.5 224,279.5 240,277" stroke="' + rgba('#b0837e', 0.5)
+        + '" stroke-width="1.2" fill="none"/>');
+    }
+
+    /* ---- 定妆/护肤的光泽 ---- */
+    if (f.glow) {
+      s.push('<ellipse cx="164" cy="150" rx="30" ry="13" fill="' + rgba('#ffffff', 0.22) + '"/>');
+      s.push('<ellipse cx="256" cy="150" rx="30" ry="13" fill="' + rgba('#ffffff', 0.22) + '"/>');
+      s.push('<ellipse cx="210" cy="132" rx="40" ry="14" fill="' + rgba('#ffffff', 0.20) + '"/>');
+    }
+    if (f.clean) {
+      s.push('<circle cx="86" cy="120" r="13" fill="none" stroke="' + rgba('#7fc8e8', 0.85) + '" stroke-width="2"/>');
+      s.push('<circle cx="104" cy="140" r="8" fill="none" stroke="' + rgba('#7fc8e8', 0.85) + '" stroke-width="2"/>');
+      s.push('<circle cx="334" cy="96" r="10" fill="none" stroke="' + rgba('#7fc8e8', 0.85) + '" stroke-width="2"/>');
+      s.push('<circle cx="346" cy="114" r="5.5" fill="none" stroke="' + rgba('#7fc8e8', 0.85) + '" stroke-width="2"/>');
+    }
+
+    /* ---- 当前步骤的标注框 ---- */
+    if (showZone) {
+      const z = ZONE[stageId];
+      s.push('<rect x="' + z.x + '" y="' + z.y + '" width="' + z.w + '" height="' + z.h + '" rx="20" '
+        + 'fill="none" stroke="' + c1 + '" stroke-width="2.4" stroke-dasharray="9 7" opacity="0.9"/>');
+      s.push('<rect x="30" y="378" width="360" height="32" rx="16" fill="' + rgba('#ffffff', 0.92) + '"/>');
+      s.push('<text x="210" y="399" text-anchor="middle" font-size="14.5" font-weight="700" fill="' + rgbshade(c2, 0.8)
+        + '" font-family="PingFang SC, Microsoft YaHei, sans-serif">' + escapeXmlText(z.label) + '</text>');
+    }
+
+    /* ---- 左右对称参考线（可选） ---- */
+    if (opts && opts.grid) {
+      const FONT = 'PingFang SC, Microsoft YaHei, sans-serif';
+      const gl = 'rgba(236, 95, 138, 0.52)';
+      const gs = 'rgba(236, 95, 138, 0.26)';
+      // 中轴线
+      s.push('<line x1="210" y1="62" x2="210" y2="372" stroke="' + gl + '" stroke-width="1.3" stroke-dasharray="9 7"/>');
+      // 横向基准线：眉 / 眼 / 鼻底 / 唇
+      [[BROW_Y, '眉'], [EYE_Y, '眼'], [248, '鼻底'], [287, '唇']].forEach(function (r) {
+        s.push('<line x1="92" y1="' + r[0] + '" x2="328" y2="' + r[0] + '" stroke="' + gs
+          + '" stroke-width="1.1" stroke-dasharray="7 7"/>');
+        s.push('<text x="86" y="' + (r[0] + 4) + '" text-anchor="end" font-size="11" fill="' + gs
+          + '" font-family="' + FONT + '">' + r[1] + '</text>');
+      });
+      // 双眼垂直对齐线（用来检查两边是否等高）
+      s.push('<line x1="166" y1="152" x2="166" y2="232" stroke="' + gs + '" stroke-width="1" stroke-dasharray="4 5"/>');
+      s.push('<line x1="254" y1="152" x2="254" y2="232" stroke="' + gs + '" stroke-width="1" stroke-dasharray="4 5"/>');
+      // 左右标记
+      s.push('<text x="104" y="90" font-size="11.5" font-weight="700" fill="' + gs + '" font-family="' + FONT + '">左</text>');
+      s.push('<text x="308" y="90" font-size="11.5" font-weight="700" fill="' + gs + '" font-family="' + FONT + '">右</text>');
+    }
+
+    s.push('</svg>');
+    return s.join('');
+  }
+
+  /* 局部特写：眼妆 / 眉妆 / 唇妆 / 修容 的技法示意 */
+  function renderCloseupSVG(stageId, palette) {
+    const p = (palette && palette.length ? palette : ['#e2557f', '#c4456c', '#f08aa8']);
+    const c1 = p[0], c2 = p[1] || p[0], c3 = p[2] || p[0];
+    const uid = 'c' + (++svgCounter);
+    const s = [];
+    const F = 'PingFang SC, Microsoft YaHei, sans-serif';
+
+    function chip(x, y, text, fill) {
+      const w = 18 + text.length * 13;
+      return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="24" rx="12" fill="' + fill + '"/>'
+        + '<text x="' + (x + w / 2) + '" y="' + (y + 16.5) + '" text-anchor="middle" font-size="12.5" font-weight="700" '
+        + 'fill="#ffffff" font-family="' + F + '">' + escapeXmlText(text) + '</text>';
+    }
+
+    if (stageId === 'eye') {
+      s.push('<svg viewBox="0 0 420 210" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="眼妆技法特写">');
+      s.push('<defs><radialGradient id="iris' + uid + '" cx="0.5" cy="0.36" r="0.66">'
+        + '<stop offset="0" stop-color="#9a7250"/><stop offset="0.62" stop-color="#5f4230"/><stop offset="1" stop-color="#33231a"/></radialGradient></defs>');
+      s.push('<rect width="420" height="210" fill="' + rgba(c3, 0.16) + '"/>');
+      const cx = 210, cy = 108;
+      // 眼皮底
+      s.push('<path d="M' + (cx - 96) + ',' + (cy + 10) + ' C' + (cx - 70) + ',' + (cy - 62) + ' ' + (cx + 70) + ',' + (cy - 62) + ' ' + (cx + 96) + ',' + (cy + 10)
+        + ' C' + (cx + 60) + ',' + (cy - 6) + ' ' + (cx - 60) + ',' + (cy - 6) + ' ' + (cx - 96) + ',' + (cy + 10) + ' Z" fill="#fcdfcd"/>');
+      // 三层眼影
+      s.push('<path d="M' + (cx - 92) + ',' + (cy + 2) + ' C' + (cx - 66) + ',' + (cy - 56) + ' ' + (cx + 66) + ',' + (cy - 56) + ' ' + (cx + 92) + ',' + (cy + 2)
+        + ' C' + (cx + 54) + ',' + (cy - 12) + ' ' + (cx - 54) + ',' + (cy - 12) + ' ' + (cx - 92) + ',' + (cy + 2) + ' Z" fill="' + rgba(c3, 0.72) + '"/>');
+      s.push('<path d="M' + (cx - 70) + ',' + (cy - 12) + ' C' + (cx - 44) + ',' + (cy - 50) + ' ' + (cx + 40) + ',' + (cy - 50) + ' ' + (cx + 74) + ',' + (cy - 4)
+        + ' C' + (cx + 34) + ',' + (cy - 20) + ' ' + (cx - 34) + ',' + (cy - 22) + ' ' + (cx - 70) + ',' + (cy - 12) + ' Z" fill="' + rgba(c2, 0.82) + '"/>');
+      s.push('<path d="M' + (cx + 30) + ',' + (cy - 22) + ' C' + (cx + 52) + ',' + (cy - 34) + ' ' + (cx + 70) + ',' + (cy - 22) + ' ' + (cx + 78) + ',' + (cy - 4)
+        + ' C' + (cx + 58) + ',' + (cy - 14) + ' ' + (cx + 42) + ',' + (cy - 18) + ' ' + (cx + 30) + ',' + (cy - 22) + ' Z" fill="' + rgba(c1, 0.92) + '"/>');
+      // 眼球
+      s.push('<path d="M' + (cx - 88) + ',' + (cy + 12) + ' C' + (cx - 56) + ',' + (cy - 22) + ' ' + (cx + 56) + ',' + (cy - 22) + ' ' + (cx + 88) + ',' + (cy + 12)
+        + ' C' + (cx + 56) + ',' + (cy + 46) + ' ' + (cx - 56) + ',' + (cy + 46) + ' ' + (cx - 88) + ',' + (cy + 12) + ' Z" fill="#fdfaf8"/>');
+      s.push('<circle cx="' + cx + '" cy="' + (cy + 10) + '" r="30" fill="url(#iris' + uid + ')" />');
+      s.push('<circle cx="' + cx + '" cy="' + (cy + 10) + '" r="13" fill="#1c1310"/>');
+      s.push('<circle cx="' + (cx - 11) + '" cy="' + (cy - 2) + '" r="8" fill="#ffffff" opacity="0.95"/>');
+      // 眼线
+      s.push('<path d="M' + (cx - 90) + ',' + (cy + 8) + ' C' + (cx - 56) + ',' + (cy - 24) + ' ' + (cx + 56) + ',' + (cy - 24) + ' ' + (cx + 92) + ',' + (cy + 6)
+        + ' L' + (cx + 116) + ',' + (cy - 12) + '" stroke="#2a1f28" stroke-width="6" fill="none" stroke-linecap="round"/>');
+      // 睫毛
+      for (let k = 0; k < 7; k++) {
+        const lx = cx - 62 + k * 21;
+        s.push('<path d="M' + lx + ',' + (cy - 18) + ' l' + (k > 4 ? 10 : 3) + ',-18" stroke="#2a1f28" stroke-width="3" stroke-linecap="round"/>');
+      }
+      // 标注
+      s.push(chip(16, 16, '① 浅色打底', rgba(c3, 0.95)));
+      s.push(chip(150, 16, '② 主色铺眼窝', rgba(c2, 0.95)));
+      s.push(chip(308, 16, '③ 深色加深眼尾', rgba(c1, 0.95)));
+      s.push('<text x="16" y="196" font-size="12.5" fill="#6f6473" font-family="' + F + '">箭头方向 = 从睫毛根部向眼窝晕染；眼尾向上拉长</text>');
+      s.push('</svg>');
+      return s.join('');
+    }
+
+    if (stageId === 'brow') {
+      s.push('<svg viewBox="0 0 420 190" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="眉妆技法特写">');
+      s.push('<rect width="420" height="190" fill="' + rgba(c3, 0.16) + '"/>');
+      s.push('<rect x="30" y="52" width="360" height="86" rx="43" fill="#fcdfcd"/>');
+      // 眉形
+      s.push('<path d="M70,116 C110,64 210,52 300,74 C326,80 340,90 348,100 '
+        + 'C320,96 250,86 190,94 C140,101 100,110 70,116 Z" fill="' + rgba(rgbshade(c2, 0.66), 0.95) + '"/>');
+      // 毛流
+      for (let k = 0; k < 12; k++) {
+        const bx = 80 + k * 22;
+        const by = 112 - Math.sin(k / 12 * Math.PI) * 34;
+        s.push('<path d="M' + bx + ',' + by + ' l13,-11" stroke="' + rgba(rgbshade(c2, 0.5), 0.75) + '" stroke-width="2.4" stroke-linecap="round"/>');
+      }
+      // 三点标记
+      const pts = [[70, 112, '眉头', '起点·浅'], [248, 62, '眉峰', '最高点'], [348, 100, '眉尾', '收尖·深']];
+      pts.forEach(function (pt) {
+        s.push('<circle cx="' + pt[0] + '" cy="' + pt[1] + '" r="6.5" fill="' + c1 + '" stroke="#fff" stroke-width="2.5"/>');
+      });
+      s.push(chip(16, 14, '眉头：与鼻翼对齐，最浅', rgba(c3, 0.95)));
+      s.push(chip(20, 150, '眉峰：瞳孔外侧上方', rgba(c2, 0.95)));
+      s.push(chip(250, 150, '眉尾：鼻翼-眼尾延长线，收尖', rgba(c1, 0.95)));
+      s.push('<text x="196" y="52" text-anchor="middle" font-size="12.5" fill="#6f6473" font-family="' + F + '">顺毛流一笔笔描画 · 前浅后深</text>');
+      s.push('</svg>');
+      return s.join('');
+    }
+
+    if (stageId === 'lip') {
+      s.push('<svg viewBox="0 0 420 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="唇妆技法特写">');
+      s.push('<rect width="420" height="200" fill="' + rgba(c3, 0.16) + '"/>');
+      s.push('<defs><linearGradient id="lg' + uid + '" x1="0" y1="0" x2="0" y2="1">'
+        + '<stop offset="0" stop-color="' + rgbshade(c1, 1.12) + '"/>'
+        + '<stop offset="1" stop-color="' + rgbshade(c2, 0.86) + '"/></linearGradient></defs>');
+      // 唇
+      s.push('<path d="M100,100 C130,72 170,66 210,84 C250,66 290,72 320,100 '
+        + 'C290,120 250,136 210,146 C170,136 130,120 100,100 Z" fill="url(#lg' + uid + ')"/>');
+      // 唇峰
+      s.push('<path d="M210,84 C204,76 196,76 192,82 C198,84 204,86 210,84 Z" fill="' + rgba('#ffffff', 0.28) + '"/>');
+      s.push('<path d="M210,84 C216,76 224,76 228,82 C222,84 216,86 210,84 Z" fill="' + rgba('#ffffff', 0.28) + '"/>');
+      // 唇中高光
+      s.push('<ellipse cx="210" cy="126" rx="42" ry="12" fill="' + rgba('#ffffff', 0.30) + '"/>');
+      // 中线
+      s.push('<path d="M100,100 C150,104 270,104 320,100" stroke="' + rgba(rgbshade(c2, 0.7), 0.7) + '" stroke-width="2.2" fill="none"/>');
+      // 由内向外的箭头
+      s.push('<path d="M210,168 L150,168" stroke="' + c1 + '" stroke-width="3" stroke-linecap="round"/>');
+      s.push('<path d="M156,163 L148,168 L156,173" fill="none" stroke="' + c1 + '" stroke-width="3" stroke-linecap="round"/>');
+      s.push('<path d="M210,168 L270,168" stroke="' + c1 + '" stroke-width="3" stroke-linecap="round"/>');
+      s.push('<path d="M264,163 L272,168 L264,173" fill="none" stroke="' + c1 + '" stroke-width="3" stroke-linecap="round"/>');
+      s.push('<circle cx="210" cy="168" r="5" fill="' + c1 + '"/>');
+      // 标注
+      s.push('<circle cx="192" cy="80" r="6" fill="' + c1 + '" stroke="#fff" stroke-width="2.5"/>');
+      s.push('<circle cx="228" cy="80" r="6" fill="' + c1 + '" stroke="#fff" stroke-width="2.5"/>');
+      s.push(chip(16, 14, '唇峰：勾勒出 M 形', rgba(c3, 0.95)));
+      s.push(chip(250, 14, '唇心：色最饱满', rgba(c2, 0.95)));
+      s.push('<text x="210" y="190" text-anchor="middle" font-size="12.5" fill="#6f6473" font-family="' + F + '">从唇心向外晕开，边缘用手指虚化更自然</text>');
+      s.push('</svg>');
+      return s.join('');
+    }
+
+    if (stageId === 'cheek') {
+      s.push('<svg viewBox="0 0 420 210" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="腮红修容技法特写">');
+      s.push('<rect width="420" height="210" fill="' + rgba(c3, 0.16) + '"/>');
+      // 侧脸轮廓
+      s.push('<path d="M60,20 C150,10 250,30 300,96 C336,144 320,190 280,200 L60,200 Z" fill="#fcdfcd"/>');
+      // 修容区
+      s.push('<path d="M120,112 C160,128 210,138 252,134 C246,152 210,168 168,164 C138,160 122,138 120,112 Z" fill="' + rgba(rgbshade(c2, 0.66), 0.42) + '"/>');
+      // 腮红区
+      s.push('<ellipse cx="176" cy="112" rx="46" ry="30" fill="' + rgba(c1, 0.48) + '"/>');
+      // 高光区
+      s.push('<ellipse cx="196" cy="76" rx="52" ry="15" fill="' + rgba('#ffffff', 0.55) + '"/>');
+      // 箭头
+      s.push('<path d="M110,168 C160,180 220,180 262,150" stroke="' + c1 + '" stroke-width="3" fill="none" stroke-linecap="round"/>');
+      s.push('<path d="M254,144 L264,149 L255,157" fill="none" stroke="' + c1 + '" stroke-width="3" stroke-linecap="round"/>');
+      s.push(chip(288, 34, '① 修容：颧骨下方', rgba(c2, 0.95)));
+      s.push(chip(288, 84, '② 腮红：苹果肌', rgba(c1, 0.95)));
+      s.push(chip(288, 134, '③ 高光：颧骨最高点', rgba(c3, 0.95)));
+      s.push('<text x="16" y="200" font-size="12.5" fill="#6f6473" font-family="' + F + '">腮红斜向上扫更立体；圆脸斜扫、长脸横扫</text>');
+      s.push('</svg>');
+      return s.join('');
+    }
+
+    return '';
+  }
+
+  return {
+    loadConfig: loadConfig,
+    saveConfig: saveConfig,
+    defaultConfig: defaultConfig,
+    PROVIDERS: PROVIDERS,
+    fileToDataURL: fileToDataURL,
+    compressImage: compressImage,
+    prepareForAPI: prepareForAPI,
+    analyzeColors: analyzeColors,
+    recognizeLook: recognizeLook,
+    analyzeSkin: analyzeSkin,
+    analyzeSkinByRules: analyzeSkinByRules,
+    recommendLooks: recommendLooks,
+    LOOK_FIT: LOOK_FIT,
+    renderFaceSVG: renderFaceSVG,
+    renderCloseupSVG: renderCloseupSVG,
+    hasApi: hasApi,
+    isLocalProxy: isLocalProxy,
+    needsBrowserKey: needsBrowserKey,
+    isLocalEnv: isLocalEnv,
+    apiBase: apiBase,
+    testConnection: testConnection,
+    PROXY_BASE: PROXY_BASE,
+    SITE_API: SITE_API
+  };
+})();

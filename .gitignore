@@ -1,0 +1,14 @@
+# 本地启动脚本：如果你在里面填过 DEEPSEEK_API_KEY，绝不要提交到仓库
+start.bat
+
+# 构建产物（Cloudflare 构建时会自动生成）
+dist/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 依赖与日志
+node_modules/
+*.log
