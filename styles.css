@@ -316,6 +316,8 @@ body {
 
 /* 阶段内容布局 */
 .stage-layout { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 24px; align-items: start; }
+/* 配图已移除：正文独占整行 */
+.stage-layout.solo { grid-template-columns: minmax(0, 1fr); }
 .stage-media {
   position: sticky; top: 24px;
   border: 1px solid var(--line); border-radius: var(--radius-sm);

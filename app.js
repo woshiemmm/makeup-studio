@@ -283,21 +283,10 @@
     const wrap = $('#stage-content');
     wrap.innerHTML = '';
 
-    const layout = el('div', 'stage-layout');
-
-    // 左侧配图（可叠加左右对称参考线）
+    const layout = el('div', 'stage-layout solo');
     const prefs = currentPrefs();
-    const media = el('div', 'stage-media');
-    const closeup = V.renderCloseupSVG(stage.id, look.palette);
-    media.innerHTML = V.renderFaceSVG(stage.id, look.palette, { grid: !!prefs.grid }) +
-      (closeup ? '<div class="closeup-wrap">' + closeup + '</div>' : '') +
-      '<div class="caption">' + stage.icon + ' ' + stage.title +
-        ' · 累积进度示意（前面完成的步骤都已体现在脸上）' +
-        (closeup ? '<br>下方为局部技法特写' : '') +
-        (prefs.grid ? '<br>已叠加左右对称参考线，方便比对两侧是否等高' : '') + '</div>';
-    layout.appendChild(media);
 
-    // 右侧内容
+    // 正文（原先左侧的程序生成配图已移除）
     const body = el('div', 'stage-body');
     body.appendChild(el('h4', null, stage.icon + ' ' + stage.title));
     body.appendChild(el('p', 'stage-intro', c.intro));
@@ -947,7 +936,6 @@
       const intro = tw.intro || stage.intro;
       const steps = tw.steps || stage.steps;
       const notes = tw.notes || [];
-      const closeup = V.renderCloseupSVG(stage.id, palette);
 
       const art = el('article', 'proc-stage');
       art.id = 'proc-stage-' + (i + 1);
@@ -958,14 +946,7 @@
           '<h3>' + stage.icon + ' ' + escapeHtml(stage.title) + '</h3>' +
           '<span class="proc-count">' + steps.length + ' 个要点</span>' +
         '</header>' +
-        '<div class="stage-layout">' +
-          '<div class="stage-media">' +
-            V.renderFaceSVG(stage.id, palette, { grid: !!prefs.grid }) +
-            (closeup ? '<div class="closeup-wrap">' + closeup + '</div>' : '') +
-            '<div class="caption">' + stage.icon + ' ' + escapeHtml(stage.title) +
-              (look ? ' · 配色取自「' + escapeHtml(look.name) + '」' : ' · 标准流程示意') +
-              (prefs.grid ? ' · 已叠加对称参考线' : '') + '</div>' +
-          '</div>' +
+        '<div class="stage-layout solo">' +
           '<div class="stage-body">' +
             '<p class="stage-intro">' + escapeHtml(intro) + '</p>' +
             steps.map(function (s, k) {
@@ -1941,9 +1922,7 @@
           '<label class="field"><span>备注（选填）</span>' +
             '<input type="text" id="save-look-note" class="input" maxlength="200" placeholder="例如：适合秋天、想要这种眼妆" /></label>' +
         '</div>' +
-        '<div style="margin-top:16px" class="ba-compare">' +
-          '<div class="ba-item ba-before">' + V.renderFaceSVG('bare', (D.looks.find(function (l) { return l.id === r.lookId; }) || {}).palette) +
-            '<div class="ba-label">妆前（示意）</div></div>' +
+        '<div style="margin-top:16px" class="ba-compare single">' +
           '<div class="ba-item ba-after"><img src="' + img.src + '" alt="参考图" /><div class="ba-label">你导入的参考图</div></div>' +
         '</div>' +
       '</div>' +
