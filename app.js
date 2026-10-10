@@ -171,7 +171,7 @@
         '<div class="swatches">' + look.palette.map(function (c) { return '<span class="swatch" style="background:' + c + '"></span>'; }).join('') + '</div>' +
         '<p class="tag">' + escapeHtml(look.tagline) + '</p>' +
         '<button class="btn-preview" type="button">' +
-          (isSel ? '✓ 已选择 · 预览妆前 / 妆后' : '👁 预览妆前 / 妆后') +
+          (isSel ? '✓ 已选择 · 参考与教程' : '👁 参考与教程') +
         '</button>' +
         '</div>';
       card.style.animationDelay = (i * 55) + 'ms';
@@ -1619,11 +1619,8 @@
     const savedPhoto = lookId ? S.getLookPhoto(lookId) : '';
     const realPhoto = opts.image || savedPhoto;
 
-    // 妆前：素颜示意；妆后：有实拍图就用真图，否则用生成的完整妆容示意
-    const beforeHtml = V.renderFaceSVG('bare', palette);
-    const afterHtml = realPhoto
-      ? '<img src="' + realPhoto + '" alt="' + escapeHtml(name) + ' 妆后参考图" />'
-      : V.renderFaceSVG('full', palette);
+    // 只保留用户自己上传的实拍图；程序生成的「妆前 / 妆后」插画已移除
+    const afterPhoto = realPhoto || '';
 
     // 该妆容的精选视频教程；没有的话退回通用入门教程
     const tuts = (D.tutorials && lookId && D.tutorials[lookId] && D.tutorials[lookId].length)
@@ -1637,31 +1634,32 @@
     const html =
       '<div class="modal-head">' +
         '<div>' +
-          '<h3>' + escapeHtml(name) + ' · 妆前妆后预览</h3>' +
+          '<h3>' + escapeHtml(name) + ' · 参考与教程</h3>' +
           '<p class="sub">' + escapeHtml(opts.tagline || '') + '</p>' +
         '</div>' +
         '<button class="modal-close" data-close="1" aria-label="关闭">×</button>' +
       '</div>' +
       '<div class="modal-body">' +
-        '<div class="ba-compare">' +
-          '<div class="ba-item ba-before">' + beforeHtml + '<div class="ba-label">妆前（素颜示意）</div></div>' +
-          '<div class="ba-item ba-after">' + afterHtml +
-            '<div class="ba-label">妆后（' + escapeHtml(name) + (realPhoto ? ' · 实拍' : ' · 示意') + '）</div></div>' +
-        '</div>' +
+        (afterPhoto
+          ? '<div class="ba-compare single">' +
+              '<div class="ba-item ba-after">' +
+                '<img src="' + afterPhoto + '" alt="' + escapeHtml(name) + ' 实拍参考图" />' +
+                '<div class="ba-label">' + escapeHtml(name) + ' · 实拍参考</div>' +
+              '</div>' +
+            '</div>'
+          : '') +
         (lookId
           ? '<div class="photo-ctl">' +
               '<input type="file" id="pv-photo-file" accept="image/*" hidden />' +
-              '<button class="mini-btn" id="pv-photo-set">📷 ' + (realPhoto ? '换一张实拍图' : '上传真人实拍图') + '</button>' +
-              (realPhoto ? '<button class="mini-btn danger" id="pv-photo-clear">恢复为示意插画</button>' : '') +
+              '<button class="mini-btn" id="pv-photo-set">📷 ' + (afterPhoto ? '换一张实拍图' : '上传你的实拍参考图') + '</button>' +
+              (afterPhoto ? '<button class="mini-btn danger" id="pv-photo-clear">删除这张图</button>' : '') +
               '<span class="hint">' +
-                (realPhoto
-                  ? '当前显示的是你自己的实拍图（只存在本机浏览器）'
-                  : '插画是按配色实时生成的示意图；想更直观，可上传一张真人照片替换右边') +
+                (afterPhoto
+                  ? '这张图只存在你自己的浏览器里，不会上传到服务器。'
+                  : '可以传一张你自己的素颜照或参考博主的妆后照，方便对着练。只存本机，不会上传。') +
               '</span>' +
             '</div>'
           : '') +
-        '<p class="preview-note">左侧「妆前」为程序生成的素颜示意，右侧「妆后」' +
-          (realPhoto ? '为你上传的实拍参考图。' : '为按该妆容配色生成的示意插画。') + '</p>' +
 
         (tuts.length
           ? '<h4 class="gallery-title">🎬 精选跟练教程</h4>' +
@@ -1732,17 +1730,17 @@
       if (clearBtn) {
         clearBtn.addEventListener('click', async function () {
           const ok = await confirmDialog({
-            title: '恢复为示意插画',
+            title: '删除实拍参考图',
             sub: '此操作不可撤销',
-            message: '确定要清除你上传的实拍参考图吗？',
-            detail: '清除后，右侧的「妆后」会重新变回程序生成的示意插画，你上传的图片会从本机删除。',
-            okText: '清除',
+            message: '确定要删除你上传的这张参考图吗？',
+            detail: '图片会从本机浏览器里删除，删除后无法恢复。',
+            okText: '删除',
             danger: true
           });
           if (!ok) { openLookPreview(opts); return; }   // 取消后把弹窗恢复回来
           S.setLookPhoto(lookId, '');
           openLookPreview(opts);
-          toast('已恢复为示意插画', { type: 'info' });
+          toast('参考图已删除', { type: 'info' });
         });
       }
     }
