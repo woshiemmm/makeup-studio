@@ -325,6 +325,10 @@
     body.appendChild(el('h5', null, '🧴 所需产品（点击可搜同款）'));
     body.appendChild(productChips(stage.products));
 
+    // 具体产品推荐（可折叠，按肤质筛选）
+    const sp = stageProductBox(stage.id);
+    if (sp) body.appendChild(sp);
+
     // 视频
     body.appendChild(renderVideo(stage));
 
@@ -969,6 +973,8 @@
       const bb = prefOn('guide') ? beginnerBox(stage.id) : null;
       if (bb) bodyEl.appendChild(bb);
       bodyEl.appendChild(productChips(stage.products));
+      const sp = stageProductBox(stage.id);
+      if (sp) bodyEl.appendChild(sp);
       bodyEl.appendChild(renderVideo(stage));
       wrap.appendChild(art);
     });
@@ -1259,21 +1265,24 @@
     }).join('');
   }
 
-  function skinProductBlock(skinTypeId) {
-    const P = D.skinProducts;
-    if (!P || !P.categories) return null;
+  /* 通用产品分组渲染：肤质报告和教学页共用
+   * cats   要渲染的分类
+   * items  全部产品
+   * match  单个产品是否匹配当前筛选条件
+   */
+  function renderProductGroups(cats, items, match) {
     const box = el('div', 'skin-products');
     const showShop = prefOn('showShop');
     const tierPref = currentPrefs().tier || '';
 
-    P.categories.forEach(function (cat) {
-      const items = P.items.filter(function (i) {
-        return i.cat === cat.id && i.suits.indexOf(skinTypeId) >= 0;
+    cats.forEach(function (cat) {
+      const list = items.filter(function (i) {
+        return i.cat === cat.id && match(i);
       });
-      if (!items.length) return;
+      if (!list.length) return;
       // 选了预算档位就把同档位排前面（不排除其他档位，保证选择足够多）
       if (tierPref) {
-        items.sort(function (a, b) {
+        list.sort(function (a, b) {
           return (b.tier === tierPref ? 1 : 0) - (a.tier === tierPref ? 1 : 0);
         });
       }
@@ -1286,7 +1295,7 @@
           '<small>' + escapeHtml(cat.why || '') + '</small>' +
         '</div>' +
         '<div class="sp-list">' +
-          items.map(function (it) {
+          list.map(function (it) {
             return '<div class="sp-item">' +
               '<div class="sp-top">' +
                 '<b class="sp-name">' + escapeHtml(it.name) + '</b>' +
@@ -1307,6 +1316,81 @@
         '</div>';
       box.appendChild(group);
     });
+    return box;
+  }
+
+  /* 护肤品：按肤质筛（保底逻辑，数据里已保证每格 >= 2 款） */
+  function skinProductBlock(skinTypeId) {
+    const P = D.skinProducts;
+    if (!P || !P.categories) return null;
+    return renderProductGroups(P.categories, P.items, function (i) {
+      return i.suits && i.suits.indexOf(skinTypeId) >= 0;
+    });
+  }
+
+  /* 当前账号的肤质（用于彩妆筛选），没有档案就返回空 */
+  function currentSkinType() {
+    const p = S.getSkinProfile();
+    const t = p && p.answers && p.answers.skinType;
+    return (t && t !== 'unknown') ? t : '';
+  }
+
+  /* ============ 教学页：某一步具体买什么（可折叠） ============ */
+  // 妆前准备 / 妆后护肤 这两步属于护肤范畴，从护肤品库里并入选定品类
+  const SKIN_MERGE = {
+    prep: ['cleanser', 'toner', 'serum', 'moist', 'sunscreen'],
+    after: ['remover', 'mask']
+  };
+
+  function stageProductBox(stageId) {
+    const M = D.makeupProducts;
+    if (!M || !M.categories) return null;
+
+    const skinType = currentSkinType();
+    const matchFn = function (i) {
+      if (!i.suits || i.suits.indexOf('all') >= 0) return true;
+      if (!skinType) return true;               // 没有肤质档案时不做筛除
+      return i.suits.indexOf(skinType) >= 0;
+    };
+
+    let cats = M.categories.filter(function (c) { return c.stage === stageId; });
+    let items = M.items;
+
+    // 并入护肤品库中的相关品类
+    const mergeIds = SKIN_MERGE[stageId];
+    if (mergeIds && D.skinProducts) {
+      const extra = D.skinProducts.categories.filter(function (c) {
+        return mergeIds.indexOf(c.id) >= 0;
+      });
+      cats = cats.concat(extra);
+      items = M.items.concat(D.skinProducts.items);
+    }
+
+    const total = cats.reduce(function (n, c) {
+      return n + items.filter(function (i) {
+        return i.cat === c.id && matchFn(i);
+      }).length;
+    }, 0);
+    if (!total) return null;
+
+    const box = el('details', 'stage-shop');
+    const sum = el('summary', 'ss-summary');
+    sum.innerHTML =
+      '<span class="ss-icon">🛍</span>' +
+      '<span class="ss-text">' +
+        '<b>这一步具体买什么</b>' +
+        '<small>' + cats.length + ' 个品类 · ' + total + ' 款具体产品' +
+          (skinType ? ' · 已按你的肤质「' + escapeHtml(SKIN_TYPE_NAME[skinType] || '') + '」筛选' : '') +
+          ' · 点击展开' +
+        '</small>' +
+      '</span>' +
+      '<span class="ss-arrow">▾</span>';
+    box.appendChild(sum);
+
+    const inner = el('div', 'ss-body');
+    inner.appendChild(renderProductGroups(cats, items, matchFn));
+    inner.appendChild(el('p', 'disclaimer', '⚠️ ' + M.disclaimer));
+    box.appendChild(inner);
     return box;
   }
 

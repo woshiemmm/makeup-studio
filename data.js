@@ -965,5 +965,193 @@ window.MAKEUP_DATA = {
         why: '高端修护面膜，重要场合前一晚敷一片，第二天妆前状态和服帖度改善明显。',
         pros: ['急救效果好', '妆前服帖', '肤感好'], cons: ['价格很高'] }
     ]
+  },
+
+  /* ============ 彩妆产品库（按步骤 + 肤质筛选） ============ */
+  makeupProducts: {
+    disclaimer: '以下为公开评测与美妆社区里口碑集中、长期在售的常见选择，仅供选购参考。价格随活动浮动，以平台实际为准；色号请以自己的肤色为准，建议先到专柜或买小样试色。',
+    categories: [
+      { id: 'primer',     name: '妆前乳 / 隔离', icon: '🧴', stage: 'prep' },
+      { id: 'foundation', name: '粉底液',        icon: '🫧', stage: 'base' },
+      { id: 'cushion',    name: '气垫',          icon: '🪞', stage: 'base' },
+      { id: 'concealer',  name: '遮瑕',          icon: '🩹', stage: 'base' },
+      { id: 'brow',       name: '眉笔 / 眉粉',   icon: '🖌️', stage: 'brow' },
+      { id: 'eyeshadow',  name: '眼影盘',        icon: '👁️', stage: 'eye' },
+      { id: 'eyeliner',   name: '眼线',          icon: '✏️', stage: 'eye' },
+      { id: 'mascara',    name: '睫毛膏',        icon: '🪶', stage: 'eye' },
+      { id: 'blush',      name: '腮红',          icon: '🌸', stage: 'cheek' },
+      { id: 'contour',    name: '修容 / 高光',   icon: '🗿', stage: 'cheek' },
+      { id: 'lip',        name: '口红 / 唇釉',   icon: '💄', stage: 'lip' },
+      { id: 'powder',     name: '散粉 / 定妆粉', icon: '❄️', stage: 'finish' },
+      { id: 'setting',    name: '定妆喷雾',      icon: '💨', stage: 'finish' },
+      { id: 'tool',       name: '上妆工具',      icon: '🧰', stage: 'base' },
+      { id: 'brush',      name: '化妆刷具',      icon: '🖌️', stage: 'prep' }
+    ],
+    items: [
+      /* ---- 妆前乳 / 隔离 ---- */
+      { cat: 'primer', name: '苏菲娜 控油瓷效妆前乳', price: '约 ¥140 / 25ml', tier: 'mid', suits: ['oily', 'combo'],
+        why: '控油妆前的经典款，油皮夏天涂它能明显延长持妆时间，是很多人回购的第一支妆前。',
+        pros: ['控油力强', '持妆明显变久', '价格适中'], cons: ['干皮用会拔干'] },
+      { cat: 'primer', name: '芭比波朗 维他命营养妆前乳', price: '约 ¥480 / 50ml', tier: 'premium', suits: ['dry', 'normal'],
+        why: '乳霜质地，滋润打底兼养肤，干皮冬天用它上粉底几乎不卡粉，专柜口碑很稳。',
+        pros: ['滋润服帖', '可当保湿霜用', '干皮救星'], cons: ['价格高', '油皮夏天会觉得厚'] },
+      { cat: 'primer', name: '兰蔻 妆前隔离乳', price: '约 ¥420 / 30ml', tier: 'premium', suits: ['all'],
+        why: '柔焦毛孔、平滑肌肤，让后续粉底更好推开，全肤质都能用，属于不会出错的高端妆前。',
+        pros: ['柔焦毛孔', '延展性好', '全肤质通用'], cons: ['价格偏高'] },
+
+      /* ---- 粉底液 ---- */
+      { cat: 'foundation', name: '雅诗兰黛 DW 持妆粉底液', price: '约 ¥520 / 30ml', tier: 'premium', suits: ['oily', 'combo'],
+        why: '持妆力天花板，出油后不容易斑驳，遮瑕度也高，油皮和混油皮夏天的长期首选。',
+        pros: ['持妆极强', '遮瑕度高', '不易脱妆'], cons: ['偏干，干皮要先做好妆前保湿', '妆感偏厚'] },
+      { cat: 'foundation', name: '植村秀 无限粉底液（小方瓶）', price: '约 ¥420 / 35ml', tier: 'premium', suits: ['dry', 'normal', 'combo'],
+        why: '轻薄服帖、奶油肌妆效，干皮和中性皮日常用很自然，是专柜常被推荐的一款。',
+        pros: ['轻薄自然', '不容易卡粉', '妆感高级'], cons: ['遮瑕力偏弱', '价格偏高'] },
+      { cat: 'foundation', name: '完美日记 水润粉底液', price: '约 ¥90 / 30ml', tier: 'value', suits: ['dry', 'normal'],
+        why: '平价入门款，水润好推开，学生党练手不心疼。色号偏少，建议先试色。',
+        pros: ['便宜', '水润好推', '新手友好'], cons: ['持妆一般', '色号偏少'] },
+      { cat: 'foundation', name: '玫珂菲 HD 高清粉底液', price: '约 ¥420 / 30ml', tier: 'premium', suits: ['normal', 'combo'],
+        why: '专门为高清镜头设计，肤感自然不假面，日常通勤和拍照都很合适。',
+        pros: ['自然服帖', '镜头友好', '不氧化'], cons: ['价格偏高', '遮瑕中等'] },
+
+      /* ---- 气垫 ---- */
+      { cat: 'cushion', name: '爱敬 AGE20\'s 精华气垫', price: '约 ¥180 / 含替换装', tier: 'mid', suits: ['dry', 'normal'],
+        why: '韩系经典气垫，精华含量高，上妆水润有光泽，干皮很喜欢这种通透感，还带替换装。',
+        pros: ['水润有光泽', '带替换装', '补妆方便'], cons: ['油皮容易脱妆', '遮瑕一般'] },
+      { cat: 'cushion', name: '雪花秀 致美润白气垫', price: '约 ¥420 / 含替换装', tier: 'premium', suits: ['dry', 'normal', 'combo'],
+        why: '高端气垫的口碑款，妆感细腻服帖，带养肤概念，适合追求质感和方便补妆的人。',
+        pros: ['妆感高级', '服帖', '补妆不斑驳'], cons: ['价格高'] },
+      { cat: 'cushion', name: '完美日记 水光气垫', price: '约 ¥100 / 含替换装', tier: 'value', suits: ['normal', 'combo'],
+        why: '平价气垫里性价比高，自带替换装，日常通勤补妆够用。',
+        pros: ['便宜', '带替换装', '方便携带'], cons: ['遮瑕一般', '持妆一般'] },
+
+      /* ---- 遮瑕 ---- */
+      { cat: 'concealer', name: '美宝莲 Fit Me 遮瑕液', price: '约 ¥80 / 6.8ml', tier: 'value', suits: ['oily', 'combo', 'normal'],
+        why: '平价遮瑕里的口碑王，好推开不卡纹，日常遮痘印和斑点完全够用。',
+        pros: ['便宜', '好推开', '不卡纹'], cons: ['遮瑕力中等', '色号偏少'] },
+      { cat: 'concealer', name: '纳斯 柔雾遮瑕液', price: '约 ¥290 / 6ml', tier: 'mid', suits: ['normal', 'dry', 'combo'],
+        why: '遮瑕度和滋润度平衡得很好，用在眼下也不容易卡纹，是遮黑眼圈的常青款。',
+        pros: ['滋润不卡纹', '遮瑕度好', '服帖'], cons: ['价格偏高'] },
+      { cat: 'concealer', name: 'IPSA 诱光三色遮瑕', price: '约 ¥330 / 4.5g', tier: 'mid', suits: ['all'],
+        why: '三色可以自己调配，能分别对付黑眼圈、痘印和提亮，专业度很高，一盘能用很久。',
+        pros: ['可调色', '分区遮瑕', '用量省'], cons: ['需要一点手法', '新手要练'] },
+
+      /* ---- 眉笔 / 眉粉 ---- */
+      { cat: 'brow', name: '凯特 三色眉粉', price: '约 ¥90 / 3g', tier: 'value', suits: ['all'],
+        why: '三色可调，粉质好上色，新手最容易上手的一款，长期是平价眉粉的销量常青款。',
+        pros: ['新手友好', '三色可调', '便宜'], cons: ['需要另配眉刷', '不太持久'] },
+      { cat: 'brow', name: '植村秀 砍刀眉笔', price: '约 ¥200 / 4g', tier: 'mid', suits: ['all'],
+        why: '硬芯眉笔的经典代表，能画出根根分明的野生眉，专业化妆师几乎人手一支。',
+        pros: ['能画毛流感', '专业', '耐用'], cons: ['需要削笔', '需要手法'] },
+      { cat: 'brow', name: '花西子 极细眉笔', price: '约 ¥70 / 0.08g', tier: 'value', suits: ['all'],
+        why: '极细笔头好控制，国货性价比高，适合画精细眉型和补毛流。',
+        pros: ['极细好控制', '便宜', '易上手'], cons: ['笔芯容易断'] },
+
+      /* ---- 眼影盘 ---- */
+      { cat: 'eyeshadow', name: '3CE 九宫格眼影盘', price: '约 ¥180 / 盘', tier: 'mid', suits: ['all'],
+        why: '配色实用，哑光和珠光搭配合理，很多人的第一盘正经眼影，日常通勤都能用。',
+        pros: ['配色实用', '显色度好', '好晕染'], cons: ['略微飞粉'] },
+      { cat: 'eyeshadow', name: '完美日记 动物眼影盘', price: '约 ¥90 / 盘', tier: 'value', suits: ['all'],
+        why: '国货平价眼影的代表，配色多、显色度够，拿来练手和试风格最划算。',
+        pros: ['便宜', '配色选择多', '显色够'], cons: ['粉质一般', '略飞粉'] },
+      { cat: 'eyeshadow', name: 'excel 四色眼影', price: '约 ¥130 / 盘', tier: 'mid', suits: ['all'],
+        why: '日系日常色，粉质细腻不太飞粉，按顺序叠涂就不会出错，通勤党很省心。',
+        pros: ['细腻不飞粉', '不用动脑', '日常百搭'], cons: ['配色偏保守'] },
+
+      /* ---- 眼线 ---- */
+      { cat: 'eyeliner', name: '奇士美 液体眼线笔', price: '约 ¥80 / 支', tier: 'value', suits: ['all'],
+        why: '极细笔尖好画，防水防晕，油皮也能撑一天，是日系眼线里口碑最稳的一支。',
+        pros: ['极细好画', '防水不晕', '便宜'], cons: ['需要一点手法', '干得快需盖紧'] },
+      { cat: 'eyeliner', name: '芭比波朗 眼线胶', price: '约 ¥260 / 3g', tier: 'mid', suits: ['all'],
+        why: '眼线胶的经典款，顺滑好画，可以趁没干时晕开做烟熏，专业妆容常用。',
+        pros: ['顺滑', '可晕染', '显色浓'], cons: ['需要配眼线刷'] },
+      { cat: 'eyeliner', name: '玛丽黛佳 眼线笔', price: '约 ¥50 / 支', tier: 'value', suits: ['all'],
+        why: '国货平价眼线，笔头顺滑好上手，新手练手成本很低。',
+        pros: ['便宜', '好上手', '国货好买'], cons: ['防水一般', '持妆一般'] },
+
+      /* ---- 睫毛膏 ---- */
+      { cat: 'mascara', name: '奇士美 花漾美姬睫毛膏', price: '约 ¥90 / 支', tier: 'value', suits: ['all'],
+        why: '卷翘纤长的口碑王，防水不晕，日系睫毛膏的代表作，很多人一用就是好几年。',
+        pros: ['卷翘纤长', '防水不晕', '便宜'], cons: ['比较难卸，要配眼唇卸妆液'] },
+      { cat: 'mascara', name: '美宝莲 黄胖子睫毛膏', price: '约 ¥90 / 支', tier: 'value', suits: ['all'],
+        why: '浓密效果很明显，价格便宜到处都能买到，学生党常用的一款。',
+        pros: ['浓密明显', '便宜好买'], cons: ['容易结块', '需要梳开'] },
+      { cat: 'mascara', name: '兰蔻 天鹅颈睫毛膏', price: '约 ¥300 / 支', tier: 'premium', suits: ['all'],
+        why: '高端睫毛膏里口碑很好，刷头角度好操作，妆效自然不容易苍蝇腿。',
+        pros: ['妆效自然', '刷头好操作', '不结块'], cons: ['价格高'] },
+
+      /* ---- 腮红 ---- */
+      { cat: 'blush', name: '纳斯 高潮腮红', price: '约 ¥300 / 4.8g', tier: 'mid', suits: ['all'],
+        why: '带细金闪的珊瑚粉，几乎适合所有肤色，扫上就有气色，是腮红界的常青款。',
+        pros: ['百搭显气色', '持久', '一盘用很久'], cons: ['价格偏高', '金闪有人不喜欢'] },
+      { cat: 'blush', name: '3CE 单色腮红', price: '约 ¥90 / 5g', tier: 'value', suits: ['all'],
+        why: '平价腮红里粉质和显色度都不错，色号多好挑，适合按妆容风格收集。',
+        pros: ['便宜', '色号多', '显色好'], cons: ['略飞粉'] },
+      { cat: 'blush', name: '倩碧 小雏菊腮红', price: '约 ¥200 / 3.5g', tier: 'mid', suits: ['all'],
+        why: '粉质细腻好晕染，新手不容易下手过重，画出来是很自然的红润感。',
+        pros: ['细腻', '不易下手重', '颜色自然'], cons: ['显色偏淡', '需要多扫几层'] },
+
+      /* ---- 修容 / 高光 ---- */
+      { cat: 'contour', name: '贝玲妃 蒲公英修容蜜粉', price: '约 ¥280 / 8g', tier: 'mid', suits: ['all'],
+        why: '经典古铜修容，颜色自然不脏脸，新手也能扫出立体感，长期是修容类的口碑款。',
+        pros: ['自然不脏', '好上手', '用量省'], cons: ['价格偏高'] },
+      { cat: 'contour', name: '3CE 立体修容粉', price: '约 ¥140 / 盘', tier: 'mid', suits: ['all'],
+        why: '双色修容，深浅可以自己控制，平价好用的日常款。',
+        pros: ['平价', '双色可控', '好晕染'], cons: ['显色偏淡'] },
+      { cat: 'contour', name: '花西子 雕花高光', price: '约 ¥130 / 盘', tier: 'value', suits: ['all'],
+        why: '国货高光，细腻微闪，提亮面部立体感，颜值也很高，适合作为第一盘高光。',
+        pros: ['细腻微闪', '颜值高', '便宜'], cons: ['包装比较占地方'] },
+
+      /* ---- 口红 / 唇釉 ---- */
+      { cat: 'lip', name: '魅可 子弹头口红', price: '约 ¥190 / 3g', tier: 'mid', suits: ['all'],
+        why: '口红界的经典，色号极全、质地选择多，几乎人手一支，选色基本都能找到合适的。',
+        pros: ['色号极全', '经典可靠', '显色好'], cons: ['部分色号偏干', '需要配润唇打底'] },
+      { cat: 'lip', name: '3CE 雾面唇釉', price: '约 ¥130 / 支', tier: 'mid', suits: ['all'],
+        why: '雾面质地很显高级，显色度高，韩系妆容里出场率极高。',
+        pros: ['雾面高级', '显色度高', '持久'], cons: ['略拔干', '唇纹明显的人要先打底'] },
+      { cat: 'lip', name: '完美日记 小酒管唇釉', price: '约 ¥60 / 支', tier: 'value', suits: ['all'],
+        why: '平价唇釉的代表，水润好涂不显唇纹，学生党收集色号的首选。',
+        pros: ['便宜', '水润', '色号多'], cons: ['持久度一般', '需要补涂'] },
+      { cat: 'lip', name: '迪奥 魅惑唇膏', price: '约 ¥350 / 3.5g', tier: 'premium', suits: ['all'],
+        why: '高端口红里的口碑款，滋润度和显色度平衡得好，包装质感也好，送礼自用都合适。',
+        pros: ['滋润显色', '质感好', '色号经典'], cons: ['价格高'] },
+
+      /* ---- 散粉 / 定妆粉 ---- */
+      { cat: 'powder', name: '悦诗风吟 控油散粉', price: '约 ¥60 / 5g', tier: 'value', suits: ['oily', 'combo'],
+        why: '极便宜的控油神器，定妆和随身吸油都好用，学生党几乎人手一个。',
+        pros: ['便宜', '控油好', '便携'], cons: ['粉质偏粗', '容易泛白'] },
+      { cat: 'powder', name: '罗拉玛斯亚 柔光散粉', price: '约 ¥360 / 29g', tier: 'premium', suits: ['dry', 'normal', 'combo'],
+        why: '粉质极细，定妆后不假面不卡粉，干皮也能放心用，是散粉里的经典款。',
+        pros: ['粉质细腻', '不卡粉', '不假面'], cons: ['价格高', '包装不便携'] },
+      { cat: 'powder', name: '纪梵希 四宫格散粉', price: '约 ¥500 / 4x2g', tier: 'premium', suits: ['normal', 'combo'],
+        why: '经典四色散粉，定妆兼提亮，颜值和口碑都在线，很多人的人生第一盒贵价散粉。',
+        pros: ['提亮定妆', '颜值高', '细腻'], cons: ['价格高'] },
+
+      /* ---- 定妆喷雾 ---- */
+      { cat: 'setting', name: '玫珂菲 定妆喷雾', price: '约 ¥290 / 125ml', tier: 'mid', suits: ['all'],
+        why: '定妆喷雾里的标杆，喷完妆面更服帖持久，不容易斑驳，专业化妆师常用。',
+        pros: ['服帖持久', '不破坏妆感', '大容量'], cons: ['喷头一般', '味道有人不喜欢'] },
+      { cat: 'setting', name: 'NYX 定妆喷雾', price: '约 ¥90 / 60ml', tier: 'value', suits: ['all'],
+        why: '平价定妆喷雾，分控油和保湿两个版本，按肤质选就行，性价比很高。',
+        pros: ['便宜', '分版本可选', '好买'], cons: ['味道一般', '喷头偏粗'] },
+      { cat: 'setting', name: '娇兰 幻彩流星定妆喷雾', price: '约 ¥420 / 100ml', tier: 'premium', suits: ['dry', 'normal'],
+        why: '高端定妆喷雾，带细微光泽，干皮喷完妆面更有通透感，肤感很舒服。',
+        pros: ['带提亮', '肤感好', '香味高级'], cons: ['价格高'] },
+
+      /* ---- 上妆工具（底妆阶段） ---- */
+      { cat: 'tool', name: '三月兔 美妆蛋', price: '约 ¥20 / 个', tier: 'value', suits: ['all'],
+        why: '国产美妆蛋的口碑款，不吃粉、上妆服帖，价格便宜可以定期换新更卫生。',
+        pros: ['便宜', '不吃粉', '上妆服帖'], cons: ['需要定期清洗更换'] },
+      { cat: 'tool', name: '芭比波朗 美妆蛋', price: '约 ¥150 / 个', tier: 'premium', suits: ['all'],
+        why: '高端美妆蛋，弹性好、上妆细腻，适合追求底妆质感的人，用得省。',
+        pros: ['上妆细腻', '弹性好', '耐用'], cons: ['价格高'] },
+
+      /* ---- 化妆刷具（妆前准备阶段） ---- */
+      { cat: 'brush', name: '受受狼 化妆刷套装', price: '约 ¥120 / 套', tier: 'mid', suits: ['all'],
+        why: '国货刷具口碑很好，刷毛软、抓粉力够，新手买一套基础款（散粉刷+眼影刷+晕染刷）就够用了。',
+        pros: ['性价比高', '刷毛柔软', '一套够用'], cons: ['需要定期清洗'] },
+      { cat: 'brush', name: '芭比波朗 专业刷具', price: '约 ¥400 / 支', tier: 'premium', suits: ['all'],
+        why: '专业级刷具，抓粉和晕染表现都很好，保养得当能用很多年，属于一次投资长期用。',
+        pros: ['专业', '耐用', '晕染好'], cons: ['价格高', '需单支购买'] }
+    ]
   }
 };

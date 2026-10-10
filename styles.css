@@ -1238,6 +1238,27 @@ ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
 }
 .sp-links a:hover { background: var(--primary); color: #fff; }
 
+/* --- 教学页：这一步具体买什么（可折叠） --- */
+.stage-shop {
+  margin: 16px 0 4px; border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm); overflow: hidden; background: #fff;
+}
+.ss-summary {
+  display: flex; align-items: center; gap: 11px;
+  padding: 13px 16px; cursor: pointer; list-style: none;
+  background: #faf7fb; transition: background .18s var(--ease);
+}
+.ss-summary::-webkit-details-marker { display: none; }
+.ss-summary:hover { background: var(--primary-faint); }
+.ss-icon { font-size: 19px; flex: 0 0 auto; }
+.ss-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ss-text b { font-size: 14px; color: var(--ink); }
+.ss-text small { font-size: 12px; color: var(--ink-faint); line-height: 1.5; }
+.ss-arrow { font-size: 13px; color: var(--ink-faint); transition: transform .22s var(--ease); }
+.stage-shop[open] .ss-arrow { transform: rotate(180deg); }
+.ss-body { padding: 14px 16px 16px; }
+.ss-body .skin-products { margin-top: 0; }
+
 @media (max-width: 640px) {
   .guide-body { padding: 4px 14px 16px; }
   .gm-time { margin-left: 0; flex-basis: 100%; }
