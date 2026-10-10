@@ -452,7 +452,6 @@
       '<div class="pers-group">' +
         '<div class="pers-head"><b>🔧 显示选项</b><small>拨动开关即时生效，设置存在当前账号</small></div>' +
         '<div class="switch-list">' +
-          switchRow('grid', '左右对称参考线', '在配图上叠加中轴线与横向基准线，方便比对两侧是否等高') +
           switchRow('checklist', '照着画 · 自检清单', '每一步末尾给出可勾选的自检项，勾选状态存进账号') +
           switchRow('guide', '新手技巧与补救', '每一步显示「手法技巧」和「画错了怎么救」；熟练后可关掉让页面更清爽') +
           switchRow('showShop', '化妆品购买入口', '在购物清单和产品标签上显示各平台直达链接') +
@@ -543,7 +542,6 @@
       chipRow('👁 眼型', D.eyeShapes || [], 'eye', p.eye) +
       chipRow('😊 脸型', D.faceShapes || [], 'face', p.face) +
       '<div class="aid-row"><span class="aid-label">🔧 辅助</span>' +
-        '<button class="aid-chip' + (p.grid ? ' active' : '') + '" data-toggle="grid" type="button">左右对称参考线</button>' +
         '<button class="aid-chip' + (p.checklist ? ' active' : '') + '" data-toggle="checklist" type="button">照着画 · 自检清单</button>' +
       '</div>';
 
