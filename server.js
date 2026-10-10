@@ -81,7 +81,13 @@ function serveStatic(pathname, res) {
       return;
     }
     const type = MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': type });
+    // 本地开发：禁止缓存，避免改了代码浏览器还在跑旧版本
+    res.writeHead(200, {
+      'Content-Type': type,
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
     res.end(data);
   });
 }
