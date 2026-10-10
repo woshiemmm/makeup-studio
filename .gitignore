@@ -12,3 +12,4 @@ desktop.ini
 # 依赖与日志
 node_modules/
 *.log
+.ssh/
