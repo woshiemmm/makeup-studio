@@ -1290,6 +1290,13 @@ body {
     width: 100%; height: auto; position: sticky; top: 0; z-index: 20;
     flex-direction: row; align-items: center; flex-wrap: wrap;
     padding: 12px 14px; gap: 12px; border-right: none; border-bottom: 1px solid var(--line);
+    /* 向下滚动时收起，向上滚动再滑出（由 app.js 加/去 .nav-collapsed） */
+    transition: transform .3s var(--ease), box-shadow .3s var(--ease);
+    will-change: transform;
+  }
+  .sidebar.nav-collapsed {
+    transform: translateY(-100%);
+    box-shadow: 0 10px 26px rgba(196, 74, 116, .16);
   }
   .brand-text p { display: none; }
   .brand-logo { width: 40px; height: 40px; font-size: 21px; border-radius: 12px; }

@@ -1517,6 +1517,43 @@
     return remove;
   }
 
+  /* ============ 移动端：导航栏随滚动收起 / 出现 ============ */
+  function initMobileNav() {
+    const bar = document.querySelector('.sidebar');
+    if (!bar) return;
+    const mq = window.matchMedia('(max-width: 820px)');
+    let lastY = window.scrollY || 0;
+    let ticking = false;
+
+    const update = function () {
+      ticking = false;
+      if (!mq.matches) { bar.classList.remove('nav-collapsed'); return; }
+      const y = window.scrollY || 0;
+      const dy = y - lastY;
+      if (y < 70) {
+        bar.classList.remove('nav-collapsed');      // 靠近顶部一律展开
+      } else if (dy > 8) {
+        bar.classList.add('nav-collapsed');         // 向下滚 → 收起
+      } else if (dy < -8) {
+        bar.classList.remove('nav-collapsed');      // 向上滚 → 滑出
+      }
+      lastY = y;
+    };
+
+    window.addEventListener('scroll', function () {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(update);
+    }, { passive: true });
+
+    const onMq = function () {
+      if (!mq.matches) bar.classList.remove('nav-collapsed');
+      lastY = window.scrollY || 0;
+    };
+    if (mq.addEventListener) mq.addEventListener('change', onMq);
+    else if (mq.addListener) mq.addListener(onMq);
+  }
+
   /* ============ 网络状态提示 ============ */
   // navigator.onLine 只能反映本机有没有网络接口，但用来做友好提示足够了
   function setNetStatus(online, silent) {
@@ -2373,6 +2410,9 @@
 
     // 网络状态
     initNetWatch();
+
+    // 移动端导航栏随滚动收起
+    initMobileNav();
 
     // 路由：浏览器返回键 / 前进键 / 直接改地址 都会走这里
     window.addEventListener('hashchange', applyRoute);
