@@ -106,6 +106,9 @@
       <button class="nav-item" data-view="analysis">
         <span class="nav-icon">🧖‍♀️</span> 肤质分析
       </button>
+      <button class="nav-item" data-view="shop">
+        <span class="nav-icon">🛍️</span> 产品推荐
+      </button>
       <button class="nav-item" data-view="settings">
         <span class="nav-icon">⚙️</span> 设置
       </button>
@@ -404,8 +407,7 @@
       </div>
     </section>
 
-    <!-- 肤质分析视图 -->
-    <section class="view" id="view-analysis">
+    <!-- 肤质分析视图 -->    <section class="view" id="view-analysis">
       <div class="page-head">
         <h2>肤质分析</h2>
         <p class="sub">上传你的脸部照片并回答几个问题，系统会分析皮肤状态并灵活调整妆容与护肤建议。</p>
@@ -469,6 +471,33 @@
         </summary>
         <div id="skin-guide-body" class="guide-body"></div>
       </details>
+    </section>
+
+    <!-- 产品推荐 / 品类详情视图 -->
+    <section class="view" id="view-shop">
+      <div class="page-head">
+        <h2 id="shop-title">🛍️ 产品推荐</h2>
+        <p class="sub" id="shop-sub">按品类查看具体产品，含推荐理由、优缺点与各平台购买链接。</p>
+      </div>
+
+      <!-- 品类目录（未选中具体品类时显示） -->
+      <div class="card" id="shop-catalog-card">
+        <div class="card-title">
+          <h3>全部品类</h3>
+          <span class="hint" id="shop-cat-hint"></span>
+        </div>
+        <div id="shop-catalog"></div>
+      </div>
+
+      <!-- 某品类的全部产品 -->
+      <div class="card hidden" id="shop-detail-card">
+        <div class="card-title">
+          <button class="btn ghost" id="btn-shop-back">← 返回全部品类</button>
+          <h3 id="shop-detail-title"></h3>
+        </div>
+        <div class="shop-toolbar" id="shop-toolbar"></div>
+        <div id="shop-detail-body"></div>
+      </div>
     </section>
 
     <!-- 设置视图 -->

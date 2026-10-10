@@ -1259,6 +1259,57 @@ ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
 .ss-body { padding: 14px 16px 16px; }
 .ss-body .skin-products { margin-top: 0; }
 
+/* --- 品类计数 / 首选标记 / 查看全部 --- */
+.sp-count {
+  margin-left: auto; font-size: 11.5px; font-weight: 700;
+  color: var(--ink-faint); background: #fff;
+  padding: 3px 10px; border-radius: 10px; border: 1px solid var(--line);
+}
+.sp-rank {
+  padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 800;
+  background: linear-gradient(135deg, #f7c948, #e8a33d); color: #6b4400;
+}
+.sp-unfit-tag {
+  padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700;
+  background: #f7f1f2; color: #a8654c;
+}
+.sp-unfit-item { opacity: .72; }
+.sp-more {
+  display: flex; align-items: center; gap: 11px; flex-wrap: wrap;
+  padding: 12px 16px; background: #fcfbfd; border-top: 1px solid var(--line);
+}
+.sp-more-btn { font-size: 12.5px; padding: 8px 15px; }
+.sp-more-note { font-size: 11.5px; color: var(--ink-faint); }
+.sp-group.solo { border: none; }
+.sp-group.solo .sp-list { border: 1.5px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+
+/* --- 产品推荐页 --- */
+.shop-cat-group { margin-bottom: 22px; }
+.shop-cat-group:last-child { margin-bottom: 0; }
+.shop-cat-title {
+  margin: 0 0 12px; font-size: 14px; font-weight: 800; color: var(--ink);
+  padding-bottom: 9px; border-bottom: 1.5px solid var(--line);
+}
+.shop-cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 11px; }
+.shop-cat-btn {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 13px 15px; border-radius: var(--radius-sm);
+  border: 1.5px solid var(--line); background: #fff;
+  font-family: var(--font); cursor: pointer; text-align: left;
+  transition: all .17s var(--ease);
+}
+.shop-cat-btn:hover {
+  border-color: var(--primary); background: var(--primary-faint);
+  transform: translateY(-2px); box-shadow: 0 8px 20px rgba(196, 74, 116, .13);
+}
+.scb-icon { font-size: 20px; flex: 0 0 auto; }
+.scb-name { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.scb-count { flex: 1 1 100%; font-size: 11.5px; color: var(--ink-faint); }
+
+.shop-toolbar { padding: 0 0 15px; margin-bottom: 15px; border-bottom: 1px solid var(--line); }
+.st-sorts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.st-label { font-size: 12.5px; font-weight: 700; color: var(--ink-faint); }
+
 @media (max-width: 640px) {
   .guide-body { padding: 4px 14px 16px; }
   .gm-time { margin-left: 0; flex-basis: 100%; }
