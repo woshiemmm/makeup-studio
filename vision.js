@@ -301,7 +301,7 @@ window.VISION = (function () {
       } else if (/127\.0\.0\.1|localhost/.test(url)) {
         hint = '本地代理未启动。请先双击 start.bat 启动本地服务（默认 http://127.0.0.1:8787），再重试。';
       } else {
-        hint = '可能是网络不可达，或浏览器跨域（CORS）限制。建议改用「本站服务器」或「DeepSeek 本地代理」。';
+        hint = '可能是网络不可达（DeepSeek 官方接口支持浏览器直连，通常不是跨域问题），或 API Key 无效。若所在网络受限，可改用「本站服务器」或「DeepSeek 本地代理」。';
       }
       throw new Error('无法连接接口：' + hint + '［' + raw + '］');
     }

@@ -1394,7 +1394,7 @@
     const isCors = cfg.provider === 'deepseek';
     $('#cfg-status').className = 'hint ok';
     $('#cfg-status').textContent = '✅ 已保存。当前模式：' + desc +
-      (isCors ? '　提示：「DeepSeek 官方直连」可能被浏览器跨域拦截，若失败请改用「本站服务器」或「DeepSeek 本地代理」。' : '');
+      (isCors ? '　提示：DeepSeek 官方接口已实测允许浏览器直连（CORS 开放），一般可直接用；若你们那边网络受限再换「本站服务器」。' : '');
     toast('接口配置已保存 · ' + desc, { type: desc.indexOf('演示') >= 0 ? 'warn' : 'ok' });
   }
 
