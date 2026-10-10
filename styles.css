@@ -1037,6 +1037,18 @@ body {
 
 /* 表单内联小字提示 */
 .field-hint { font-size: 11.5px; color: var(--ink-faint); line-height: 1.5; }
+
+/* API Key 输入框：显示 / 复制 按钮 */
+.key-wrap { position: relative; display: flex; align-items: center; gap: 7px; }
+.key-wrap .input { flex: 1; min-width: 0; }
+.key-btn {
+  flex: 0 0 auto; padding: 9px 13px; border-radius: var(--radius-sm);
+  border: 1.5px solid var(--line); background: #fff; color: var(--ink-soft);
+  font-size: 12.5px; font-weight: 700; font-family: var(--font);
+  cursor: pointer; white-space: nowrap; transition: all .16s var(--ease);
+}
+.key-btn:hover { border-color: var(--primary); color: var(--primary-2); background: var(--primary-faint); }
+.key-btn.copied { border-color: var(--ok); color: var(--ok); background: var(--ok-bg); }
 .field-hint-inline { font-weight: 400; color: var(--ink-faint); font-size: 11.5px; }
 
 /* ============================================================

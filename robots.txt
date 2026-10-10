@@ -1,5 +1,5 @@
 User-agent: *
 Allow: /
 
-# 部署后用 node set-domain.js https://你的域名 自动替换下面的 __SITE_URL__
-Sitemap: __SITE_URL__/sitemap.xml
+# 部署后用 node set-domain.js https://你的域名 自动替换下面的 https://makeup-studio-2ak.pages.dev
+Sitemap: https://makeup-studio-2ak.pages.dev/sitemap.xml

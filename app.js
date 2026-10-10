@@ -2338,6 +2338,41 @@
     $('#btn-reset-cfg').addEventListener('click', resetSettings);
     $('#btn-save-token').addEventListener('click', saveTokenSettings);
 
+    // 显示 / 隐藏已保存的 API Key
+    $('#btn-eye-key').addEventListener('click', function () {
+      const inp = $('#cfg-key');
+      const show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      this.textContent = show ? '🙈 隐藏' : '👁 显示';
+    });
+    // 一键复制（方便填到 Cloudflare 环境变量里）
+    $('#btn-copy-key').addEventListener('click', async function () {
+      const btn = this;
+      const v = ($('#cfg-key').value || '').trim();
+      if (!v) { toast('还没有填写 API Key', { type: 'warn' }); return; }
+      let ok = false;
+      try {
+        await navigator.clipboard.writeText(v);
+        ok = true;
+      } catch (e) {
+        // 剪贴板不可用时退回到手动选中
+        const inp = $('#cfg-key');
+        const wasPwd = inp.type === 'password';
+        inp.type = 'text';
+        inp.select();
+        ok = document.execCommand && document.execCommand('copy');
+        if (!wasPwd) { /* 保持可见，方便手动复制 */ }
+      }
+      if (ok) {
+        btn.textContent = '已复制';
+        btn.classList.add('copied');
+        toast('API Key 已复制到剪贴板');
+        setTimeout(function () { btn.textContent = '复制'; btn.classList.remove('copied'); }, 2200);
+      } else {
+        toast('自动复制失败，请手动选中后按 Ctrl+C', { type: 'warn', duration: 4000 });
+      }
+    });
+
     // 网络状态
     initNetWatch();
 

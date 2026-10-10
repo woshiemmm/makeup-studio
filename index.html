@@ -12,14 +12,14 @@
 <meta name="theme-color" content="#ec5f8a" />
 <meta name="format-detection" content="telephone=no" />
 
-<!-- 部署后用 node set-domain.js https://你的域名 自动替换下面所有 __SITE_URL__ -->
-<link rel="canonical" href="__SITE_URL__/" />
+<!-- 部署后用 node set-domain.js https://你的域名 自动替换下面所有 https://makeup-studio-2ak.pages.dev -->
+<link rel="canonical" href="https://makeup-studio-2ak.pages.dev/" />
 
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="妆 · 妆造教学" />
 <meta property="og:title" content="化妆教学｜妆前准备到妆后护肤完整步骤 · 妆容识别 · 肤质分析" />
 <meta property="og:description" content="8 种妆容分步图文教学，从妆前准备到妆后护肤全覆盖；支持妆容图片识别、收藏自己的妆容与肤质分析定制方案。" />
-<meta property="og:url" content="__SITE_URL__/" />
+<meta property="og:url" content="https://makeup-studio-2ak.pages.dev/" />
 <meta property="og:locale" content="zh_CN" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="化妆教学｜从妆前准备到妆后护肤" />
@@ -39,7 +39,7 @@
       "alternateName": "化妆教学网站",
       "description": "从妆前准备到妆后护肤的完整化妆教学，含 8 种妆容分步图文、妆容识别、妆容收藏与肤质分析。",
       "inLanguage": "zh-CN",
-      "url": "__SITE_URL__/"
+      "url": "https://makeup-studio-2ak.pages.dev/"
     },
     {
       "@type": "WebApplication",
@@ -519,7 +519,11 @@
           </label>
           <label class="field">
             <span>API Key</span>
-            <input type="password" id="cfg-key" class="input" placeholder="sk-…（DeepSeek 平台的 API Key）" />
+            <span class="key-wrap">
+              <input type="password" id="cfg-key" class="input" placeholder="sk-…（DeepSeek 平台的 API Key）" />
+              <button class="key-btn" id="btn-eye-key" type="button" title="显示 / 隐藏已保存的 Key">👁 显示</button>
+              <button class="key-btn" id="btn-copy-key" type="button" title="复制到剪贴板">复制</button>
+            </span>
             <small id="cfg-key-hint" class="field-hint"></small>
           </label>
           <label class="field full">

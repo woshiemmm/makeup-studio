@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- 部署后用 node set-domain.js https://你的域名 自动替换下面的 __SITE_URL__ -->
+<!-- 部署后用 node set-domain.js https://你的域名 自动替换下面的 https://makeup-studio-2ak.pages.dev -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>__SITE_URL__/</loc>
+    <loc>https://makeup-studio-2ak.pages.dev/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
