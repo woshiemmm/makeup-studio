@@ -510,7 +510,7 @@
       const ok = await confirmDialog({
         title: '重置个性化',
         message: '确定要把个性化设置恢复成默认值吗？',
-        detail: '你将失去：已选的眼型、脸型、预算档位，以及四个显示开关的状态。',
+        detail: '你将失去：已选的眼型、脸型、预算档位，以及三个显示开关的状态。',
         okText: '重置',
         danger: true
       });
