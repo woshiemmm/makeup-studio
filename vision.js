@@ -231,28 +231,153 @@ window.VISION = (function () {
   }
 
   /* ============ 肤质分析（演示模式规则引擎） ============ */
+  /* ============ 从照片推断肤质倾向（仅作参考，不能替代自测） ============
+   * 说明：照片的明暗受拍摄光线影响很大，所以这里只给「倾向」和「依据」，
+   * 不下确定结论。真正可靠的判断还是要靠洗脸测试法。
+   */
+  function inferSkinFromImage(a) {
+    if (!a || !a.buckets) return null;
+    const b = a.buckets;
+    const total = Math.max(1, Object.values(b).reduce(function (x, y) { return x + y; }, 0));
+    const redShare = (b.red + b.pink) / total;
+    const bright = a.brightness;
+    const sat = a.avgSat;
+
+    const signals = [];
+    const score = { oily: 0, dry: 0, combo: 0, normal: 0, sensitive: 0 };
+
+    // ① 红色调占比 → 泛红 / 敏感倾向
+    if (redShare > 0.38) {
+      score.sensitive += 3;
+      signals.push('照片中红色调占 ' + Math.round(redShare * 100) + '%，明显偏高，可能有泛红或红血丝倾向');
+    } else if (redShare > 0.25) {
+      score.sensitive += 1.5;
+      signals.push('照片中红色调占 ' + Math.round(redShare * 100) + '%，略偏多，可能有轻度泛红');
+    } else {
+      signals.push('照片中红色调占 ' + Math.round(redShare * 100) + '%，属于正常范围，泛红迹象不明显');
+    }
+
+    // ② 整体亮度 → 高光反射（偏油）或暗沉（偏干）
+    if (bright > 195) {
+      score.oily += 3; score.combo += 1;
+      signals.push('照片整体很亮（亮度 ' + Math.round(bright) + '），高光反射明显，皮肤可能偏油亮');
+    } else if (bright > 172) {
+      score.oily += 1.5; score.combo += 1.5; score.normal += 1;
+      signals.push('照片亮度中等偏高（' + Math.round(bright) + '），可能有自然光泽，油水平衡尚可');
+    } else if (bright < 108) {
+      score.dry += 3; score.normal -= 1;
+      signals.push('照片整体偏暗（亮度 ' + Math.round(bright) + '），可能偏干或存在暗沉（也受拍摄光线影响）');
+    } else if (bright < 138) {
+      score.dry += 1.5; score.combo += 1;
+      signals.push('照片亮度中等偏低（' + Math.round(bright) + '），皮肤光泽度一般');
+    } else {
+      score.normal += 2; score.combo += 1;
+      signals.push('照片亮度适中（' + Math.round(bright) + '），肤感看起来比较均衡');
+    }
+
+    // ③ 饱和度 → 暗沉缺水
+    if (sat < 0.15) {
+      score.dry += 2;
+      signals.push('照片色彩偏灰（饱和度 ' + sat.toFixed(2) + '），可能缺水或暗沉');
+    } else if (sat > 0.42) {
+      score.sensitive += 1;
+      signals.push('照片色彩饱和度偏高（' + sat.toFixed(2) + '），可能与泛红叠加有关');
+    } else {
+      signals.push('照片色彩饱和度正常（' + sat.toFixed(2) + '）');
+    }
+
+    // 选出得分最高的倾向
+    let guess = 'normal', top = -99;
+    ['oily', 'dry', 'combo', 'normal', 'sensitive'].forEach(function (k) {
+      if (score[k] > top) { top = score[k]; guess = k; }
+    });
+
+    // 置信度：看第一名和第二名的差距
+    const sorted = Object.keys(score).map(function (k) { return score[k]; }).sort(function (x, y) { return y - x; });
+    const gap = (sorted[0] || 0) - (sorted[1] || 0);
+    const confidence = gap >= 2.5 ? '较明显' : (gap >= 1 ? '一般' : '不明显');
+
+    return {
+      guess: guess,
+      score: score,
+      confidence: confidence,
+      signals: signals,
+      caveat: '照片推断只能作为参考 —— 拍摄光线、妆容、滤镜都会影响结果。最可靠的还是上面的「洗脸测试法」，建议实测一次再和照片结论对照。'
+    };
+  }
+
+  /* ============ 问卷完整性检查 ============ */
+  const QUIZ_LABELS = {
+    skinType: '肤质类型', undertone: '肤色基调', depth: '肤色深浅',
+    concerns: '肌肤困扰', sensitive: '是否敏感', climate: '当前气候'
+  };
+
+  function checkQuizCompleteness(answers) {
+    const a = answers || {};
+    const missing = [];
+    Object.keys(QUIZ_LABELS).forEach(function (k) {
+      const v = a[k];
+      const empty = (v === undefined || v === null || v === '' ||
+        (Array.isArray(v) && v.length === 0));
+      if (empty) missing.push(QUIZ_LABELS[k]);
+    });
+    // 选了「不确定」不算缺失，但需要标记出来单独说明
+    const unsure = [];
+    if (a.skinType === 'unknown') unsure.push('肤质类型（你选了不确定，我们会用照片推断 + 提供自测方法）');
+    if (a.undertone === 'unsure') unsure.push('肤色基调');
+    if (a.depth === 'unsure') unsure.push('肤色深浅');
+    return { missing: missing, unsure: unsure, complete: missing.length === 0 };
+  }
+
   function analyzeSkinByRules(answers, faceAnalysis) {
     const R = window.MAKEUP_DATA.skinRules;
+    const a = answers || {};
+
+    // ① 照片推断（无论用户是否填了肤质都算，用来做交叉验证）
+    const infer = inferSkinFromImage(faceAnalysis);
+
+    // ② 确定最终肤质：用户说了就以用户为准；选「不确定」或没填就用照片推断
+    let skinTypeId = a.skinType;
+    let inferred = false;
+    if (!skinTypeId || skinTypeId === 'unknown') {
+      skinTypeId = (infer && infer.guess) || 'normal';
+      inferred = true;
+    }
+
+    // ③ 问卷完整性
+    const completeness = checkQuizCompleteness(a);
+
     const out = {
-      skinType: R.skinType[answers.skinType] || R.skinType.normal,
-      undertone: R.undertone[answers.undertone] || '',
-      depth: R.depth[answers.depth] || '',
-      concerns: (answers.concerns || []).map(function (c) { return R.concerns[c]; }).filter(Boolean),
-      sensitive: R.sensitive[answers.sensitive] || '',
-      climate: R.climate[answers.climate] || '',
+      skinType: R.skinType[skinTypeId] || R.skinType.normal,
+      skinTypeId: skinTypeId,
+      inferred: inferred,                 // 肤质是否来自照片推断
+      infer: infer,                       // 照片推断的完整结果
+      completeness: completeness,         // 缺失项
+      undertone: R.undertone[a.undertone] || '',
+      depth: R.depth[a.depth] || '',
+      concerns: (a.concerns || []).map(function (c) { return R.concerns[c]; }).filter(Boolean),
+      sensitive: R.sensitive[a.sensitive] || '',
+      climate: R.climate[a.climate] || '',
       image: null
     };
 
-    // 结合图片明暗/泛红做补充
+    // ④ 图片明暗/泛红做补充（沿用原有逻辑，并补充与照片推断的对照）
     if (faceAnalysis) {
       const extra = [];
       if (faceAnalysis.brightness < 105) extra.push('照片整体偏暗，可能存在肤色暗沉，建议妆前用提亮妆前/紫色隔离提气色。');
       if (faceAnalysis.brightness > 200) extra.push('照片整体偏亮，肤感通透，妆容可保持清透光泽。');
       if (faceAnalysis.buckets.red + faceAnalysis.buckets.pink > 0) {
-        const redShare = (faceAnalysis.buckets.red + faceAnalysis.buckets.pink) / Math.max(1, Object.values(faceAnalysis.buckets).reduce(function (a, x) { return a + x; }, 0));
+        const redShare = (faceAnalysis.buckets.red + faceAnalysis.buckets.pink) / Math.max(1, Object.values(faceAnalysis.buckets).reduce(function (x, y) { return x + y; }, 0));
         if (redShare > 0.4) extra.push('照片红色调明显，若有泛红/红血丝，可用绿色妆前或绿色遮瑕局部中和。');
       }
       if (faceAnalysis.avgSat < 0.18) extra.push('照片色彩偏灰，皮肤可能显暗沉，建议加强补水与提亮。');
+
+      // 照片推断与用户自述不一致时，明确提示
+      if (!inferred && infer && infer.guess !== skinTypeId && infer.confidence !== '不明显') {
+        const nameOf = { oily: '油性', dry: '干性', combo: '混合', normal: '中性', sensitive: '敏感' };
+        extra.push('⚠️ 注意：你自述是「' + nameOf[skinTypeId] + '」，但照片观感更接近「' + nameOf[infer.guess] +
+          '」。建议用下面的「洗脸测试法」实测一次 —— 如果两者不符，以实测为准。');
+      }
       out.image = extra;
     }
     return out;
@@ -494,12 +619,38 @@ window.VISION = (function () {
     const useApi = cfg.mode === 'api' || (cfg.mode === 'auto' && hasApi(cfg));
     if (useApi) {
       const labelMap = { skinType: '肤质', undertone: '肤色基调', depth: '肤色深浅', concerns: '肌肤困扰', sensitive: '是否敏感', climate: '当前气候' };
+      const valMap = { unknown: '不确定（请用照片推断）', unsure: '不确定', no: '不会', yes: '经常', sometimes: '偶尔' };
       let q = '';
       for (const k in answers) {
-        const v = Array.isArray(answers[k]) ? answers[k].join('、') : answers[k];
+        let v = Array.isArray(answers[k]) ? answers[k].join('、') : answers[k];
+        if (v && valMap[v]) v = valMap[v];
         if (v) q += (labelMap[k] || k) + '：' + v + '\n';
       }
-      const prompt = '请根据这张脸部照片和以下用户自述，分析其皮肤状态，并用中文给出：\n1. 肤质判断\n2. 底妆建议（妆前、粉底、遮瑕、定妆）\n3. 选色建议（粉底色号/腮红/口红）\n4. 遮瑕重点\n5. 妆后护肤与卸妆建议\n6. 需要避开的产品成分或注意事项\n\n用户自述：\n' + q;
+      if (!q.trim()) q = '（用户没有填写任何问卷信息，请完全依据照片分析，并明确指出信息不足会影响结论准确性）\n';
+      const typeName = { oily: '油性', dry: '干性', combo: '混合', normal: '中性', sensitive: '敏感' };
+      const photoHint = (demo.infer && demo.infer.guess)
+        ? (typeName[demo.infer.guess] + '，把握度：' + demo.infer.confidence)
+        : '';
+      const prompt =
+        '请根据这张脸部照片和以下用户自述，分析其皮肤状态。\n\n' +
+        '要求：\n' +
+        '· 如果用户自述与照片观感不一致，请明确指出，说明你以哪个为准、理由是什么\n' +
+        '· 如果用户信息缺失或选了「不确定」，请说明这会影响哪些结论、需要补充什么\n' +
+        '· 护肤建议要落到具体成分方向，不要只写「注意保湿」这类空话\n' +
+        '· 语气面向化妆初学者，通俗、可执行\n\n' +
+        '请按以下结构用中文回答：\n' +
+        '1. 肤质判断（必须写明判断依据：照片里观察到了什么 + 用户自述了什么）\n' +
+        '2. 皮肤特征与可能存在的问题\n' +
+        '3. 晨间护肤流程（分步，每步说明目的）\n' +
+        '4. 夜间护肤流程（分步）\n' +
+        '5. 需要避开的成分或产品类型\n' +
+        '6. 底妆建议（妆前、粉底、遮瑕、定妆）\n' +
+        '7. 选色建议（粉底色号基调 / 腮红 / 口红）\n' +
+        '8. 遮瑕重点与手法\n' +
+        '9. 妆后护肤与卸妆建议\n' +
+        '10. 其他提醒（换季、作息、就医建议等）\n\n' +
+        '用户自述：\n' + q +
+        (photoHint ? '\n（补充：从照片像素分析得到的倾向是「' + photoHint + '」，仅供你交叉验证，不一定要采纳）\n' : '');
       const cacheKey = 'skin|' + cfg.model + '|' + (cfg.detail || 'hi') + '|' +
         (cfg.maxImageSize || 1024) + '|' + hashString(faceImg.src) + '|' + JSON.stringify(answers);
       if (cfg.cache !== false) {
@@ -1132,6 +1283,8 @@ window.VISION = (function () {
     compressImage: compressImage,
     prepareForAPI: prepareForAPI,
     analyzeColors: analyzeColors,
+    inferSkinFromImage: inferSkinFromImage,
+    checkQuizCompleteness: checkQuizCompleteness,
     recognizeLook: recognizeLook,
     analyzeSkin: analyzeSkin,
     analyzeSkinByRules: analyzeSkinByRules,

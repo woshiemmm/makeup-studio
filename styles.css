@@ -1098,6 +1098,152 @@ body {
 .acc-item .acc-tag { font-size: 11px; padding: 2px 9px; border-radius: 12px; background: var(--primary); color: #fff; font-weight: 700; flex: 0 0 auto; }
 .acc-item .acc-btns { display: flex; gap: 6px; flex: 0 0 auto; }
 
+/* ============================================================
+   肤质自测 · 分析报告 · 产品推荐
+   ============================================================ */
+
+/* --- 自测卡片（可折叠） --- */
+.guide-card { padding: 0; overflow: hidden; }
+.guide-summary {
+  display: flex; align-items: center; gap: 13px;
+  padding: 17px 20px; cursor: pointer; list-style: none;
+  transition: background .18s var(--ease);
+}
+.guide-summary::-webkit-details-marker { display: none; }
+.guide-summary:hover { background: var(--primary-faint); }
+.guide-icon { font-size: 24px; flex: 0 0 auto; }
+.guide-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.guide-text b { font-size: 15px; color: var(--ink); }
+.guide-text small { font-size: 12.5px; color: var(--ink-faint); }
+.guide-arrow { font-size: 14px; color: var(--ink-faint); transition: transform .22s var(--ease); }
+.guide-card[open] .guide-arrow { transform: rotate(180deg); }
+.guide-body { padding: 4px 20px 20px; }
+
+.guide-intro { margin: 0 0 10px; font-size: 13.5px; line-height: 1.8; color: var(--ink-soft); }
+.guide-warn {
+  margin: 0 0 16px; padding: 11px 14px; border-radius: var(--radius-xs);
+  background: #fff8ec; border-left: 3px solid #e8a33d;
+  font-size: 12.5px; line-height: 1.75; color: #8a6320;
+}
+.guide-methods { display: grid; gap: 14px; }
+.guide-method {
+  padding: 15px 17px; border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm); background: #fff;
+}
+.gm-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 11px; }
+.gm-icon { font-size: 19px; }
+.gm-head b { font-size: 14.5px; color: var(--ink); }
+.gm-badge {
+  padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 800;
+  background: var(--primary-soft); color: var(--primary-2);
+}
+.gm-time { margin-left: auto; font-size: 11.5px; color: var(--ink-faint); }
+.gm-steps { margin: 0 0 12px; padding-left: 20px; }
+.gm-steps li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
+.gm-results { display: grid; gap: 7px; }
+.gm-result { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; line-height: 1.7; color: var(--ink-soft); }
+.gm-tag {
+  flex: 0 0 auto; min-width: 46px; text-align: center;
+  padding: 3px 9px; border-radius: 9px; font-size: 11.5px; font-weight: 800;
+  background: #f1eef5; color: #6b5a80;
+}
+.gm-tag.gm-oily { background: #e6f0fa; color: #2c6ba8; }
+.gm-tag.gm-dry { background: #fdf0e4; color: #a86a24; }
+.gm-tag.gm-combo { background: #eaf5ec; color: #34875a; }
+.gm-tag.gm-normal { background: #eef0f8; color: #4c5a92; }
+.gm-tag.gm-sensitive { background: #fdeaea; color: #b8444f; }
+.gm-text { flex: 1; min-width: 0; }
+.gm-extra {
+  margin: 11px 0 0; padding: 10px 13px; border-radius: var(--radius-xs);
+  background: #fdf6f7; font-size: 12.5px; line-height: 1.75; color: #8a4a55;
+}
+.guide-note {
+  margin: 16px 0 0; padding: 12px 15px; border-radius: var(--radius-xs);
+  background: #f7f4fa; border-left: 3px solid #a883d8;
+  font-size: 12.5px; line-height: 1.8; color: var(--ink-soft);
+}
+
+/* --- 提示框 --- */
+.warn-box {
+  padding: 15px 18px; margin-bottom: 16px; border-radius: var(--radius-sm);
+  background: #fff9ef; border: 1.5px solid #f0dcbc; border-left-width: 4px;
+}
+.warn-box.info { background: #f4f7fc; border-color: #cdd9ef; }
+.warn-box h5 { margin: 0 0 8px; font-size: 14px; color: #8a6320; }
+.warn-box.info h5 { color: #3c5a8a; }
+.warn-box p { margin: 0 0 6px; font-size: 13px; line-height: 1.8; color: var(--ink-soft); }
+.warn-box p:last-child { margin-bottom: 0; }
+.warn-box b { color: #b8444f; }
+.warn-sub { font-size: 12.5px; color: var(--ink-faint); }
+
+/* --- 肤质判断头部 --- */
+.skin-type-head {
+  padding: 15px 18px; margin-bottom: 15px; border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--primary-faint), #fff);
+  border: 1.5px solid var(--primary-soft);
+}
+.st-title { font-size: 20px; font-weight: 800; color: var(--primary-2); letter-spacing: .5px; }
+.st-alias { margin-top: 3px; font-size: 12.5px; color: var(--ink-faint); }
+.st-basis { margin-top: 10px; font-size: 12.5px; line-height: 1.75; color: var(--ink-soft); }
+.st-basis b { color: var(--primary-2); }
+.hl { color: var(--primary-2); font-weight: 800; }
+
+ul.clean { margin: 8px 0; padding-left: 20px; }
+ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
+.note { font-size: 12.5px; line-height: 1.75; color: var(--ink-faint); margin: 10px 0 0; }
+.disclaimer {
+  margin: 16px 0 0; padding: 12px 15px; border-radius: var(--radius-xs);
+  background: #fbf8f9; font-size: 12px; line-height: 1.75; color: var(--ink-faint);
+}
+.api-text { white-space: pre-wrap; font-size: 13.5px; line-height: 1.9; color: var(--ink-soft); }
+.q-hint { margin: -4px 0 9px; font-size: 12px; color: var(--ink-faint); }
+
+/* --- 产品推荐 --- */
+.skin-products { display: grid; gap: 18px; margin-top: 6px; }
+.sp-group { border: 1.5px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; background: #fff; }
+.sp-head {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  padding: 12px 16px; background: #faf7fb; border-bottom: 1px solid var(--line);
+}
+.sp-icon { font-size: 18px; }
+.sp-head b { font-size: 14.5px; color: var(--ink); }
+.sp-head small { font-size: 12px; color: var(--ink-faint); }
+.sp-list { display: grid; }
+.sp-item { padding: 15px 16px; border-bottom: 1px solid var(--line); }
+.sp-item:last-child { border-bottom: none; }
+.sp-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 5px; }
+.sp-name { font-size: 14px; color: var(--ink); font-weight: 800; }
+.sp-tier {
+  padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 800;
+  background: #f1eef5; color: #6b5a80;
+}
+.sp-tier.sp-value { background: #eaf5ec; color: #34875a; }
+.sp-tier.sp-premium { background: #f6eef8; color: #8a4c9e; }
+.sp-match {
+  padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 800;
+  background: var(--primary); color: #fff;
+}
+.sp-price { font-size: 12.5px; color: var(--ink-faint); margin-bottom: 8px; }
+.sp-why { margin: 0 0 9px; font-size: 13px; line-height: 1.8; color: var(--ink-soft); }
+.sp-pc { display: grid; gap: 4px; margin-bottom: 10px; }
+.sp-pros, .sp-cons { font-size: 12.5px; line-height: 1.7; }
+.sp-pros { color: #34875a; }
+.sp-cons { color: #a8654c; }
+.sp-links { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.sp-links-label { font-size: 11.5px; color: var(--ink-faint); font-weight: 700; }
+.sp-links a {
+  padding: 5px 12px; border-radius: 14px; font-size: 12px; font-weight: 700;
+  background: var(--primary-faint); color: var(--primary-2);
+  text-decoration: none; transition: all .16s var(--ease);
+}
+.sp-links a:hover { background: var(--primary); color: #fff; }
+
+@media (max-width: 640px) {
+  .guide-body { padding: 4px 14px 16px; }
+  .gm-time { margin-left: 0; flex-basis: 100%; }
+  .sp-name { font-size: 13.5px; }
+}
+
 /* 确认弹窗 */
 .cf-msg { margin: 0; font-size: 15px; line-height: 1.75; color: var(--ink); }
 .cf-msg b { color: var(--primary-2); }

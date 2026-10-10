@@ -1117,7 +1117,8 @@
     form.innerHTML = '';
     D.quiz.forEach(function (q) {
       const block = el('div', 'q-block');
-      block.innerHTML = '<p class="q-title">' + q.title + (q.multi ? '<small>（可多选）</small>' : '') + '</p>';
+      block.innerHTML = '<p class="q-title">' + q.title + (q.multi ? '<small>（可多选）</small>' : '') + '</p>' +
+        (q.hint ? '<p class="q-hint">' + escapeHtml(q.hint) + '</p>' : '');
       const row = el('div', 'option-row');
       q.options.forEach(function (opt) {
         const chip = el('label', 'chip');
@@ -1178,11 +1179,14 @@
       const img = $('#face-img');
       if (!img.complete || !img.naturalWidth) { await new Promise(function (r) { img.onload = r; }); }
       const result = await V.analyzeSkin(img, answers, cfg);
-      renderAnalysisResult(result, answers);
+      // 选了「不确定」时，用照片推断出的肤质补齐，供报告 / 推荐 / 存档统一使用
+      const norm = Object.assign({}, answers);
+      if (result.demo && result.demo.skinTypeId) norm.skinType = result.demo.skinTypeId;
+      renderAnalysisResult(result, norm);
       // 把问卷结论存进当前账号的肤质档案，下次自动带出
       if (result.demo) {
         S.saveSkinProfile({
-          answers: answers,
+          answers: norm,
           skinTypeTitle: result.demo.skinType.title,
           base: result.demo.skinType.base,
           after: result.demo.skinType.after,
@@ -1204,33 +1208,216 @@
     }
   }
 
+  /* ============ 肤质自测方法 ============ */
+  const SKIN_TYPE_NAME = { oily: '油性', dry: '干性', combo: '混合', normal: '中性', sensitive: '敏感' };
+  const TIER_LABEL = { value: '平价', mid: '中端', premium: '高端' };
+
+  function renderSkinGuide() {
+    const body = $('#skin-guide-body');
+    const card = $('#skin-guide-card');
+    if (!body || !card) return;
+    const g = D.skinTypeGuide;
+    if (!g) { card.classList.add('hidden'); return; }
+
+    body.innerHTML =
+      '<p class="guide-intro">' + escapeHtml(g.intro) + '</p>' +
+      '<p class="guide-warn">💡 ' + escapeHtml(g.warn) + '</p>' +
+      '<div class="guide-methods">' +
+        g.methods.map(function (m) {
+          return '<div class="guide-method">' +
+            '<div class="gm-head">' +
+              '<span class="gm-icon">' + m.icon + '</span>' +
+              '<b>' + escapeHtml(m.name) + '</b>' +
+              '<span class="gm-badge">' + escapeHtml(m.level) + '</span>' +
+              '<span class="gm-time">' + escapeHtml(m.time) + '</span>' +
+            '</div>' +
+            '<ol class="gm-steps">' +
+              m.steps.map(function (s) { return '<li>' + escapeHtml(s) + '</li>'; }).join('') +
+            '</ol>' +
+            '<div class="gm-results">' +
+              m.results.map(function (r) {
+                return '<div class="gm-result">' +
+                  '<span class="gm-tag' + (r.value ? ' gm-' + r.value : '') + '">' +
+                    escapeHtml(r.value ? (SKIN_TYPE_NAME[r.value] || r.value) : '观察') + '</span>' +
+                  '<span class="gm-text">' + escapeHtml(r.text) + '</span>' +
+                '</div>';
+              }).join('') +
+            '</div>' +
+            (m.extra ? '<p class="gm-extra">⚠️ ' + escapeHtml(m.extra) + '</p>' : '') +
+          '</div>';
+        }).join('') +
+      '</div>' +
+      '<p class="guide-note">📌 ' + escapeHtml(g.note) + '</p>';
+  }
+
+  /* ============ 产品推荐（按肤质筛选 + 购买链接） ============ */
+  function productLinks(name) {
+    const k = encodeURIComponent(name);
+    return SHOP_PLATFORMS.map(function (p) {
+      return '<a href="' + p.url(k) + '" target="_blank" rel="noopener" title="在' + p.name +
+        '搜索「' + escapeHtml(name) + '」' + (p.app ? '（App 内体验更好）' : '') + '">' + p.name + '</a>';
+    }).join('');
+  }
+
+  function skinProductBlock(skinTypeId) {
+    const P = D.skinProducts;
+    if (!P || !P.categories) return null;
+    const box = el('div', 'skin-products');
+    const showShop = prefOn('showShop');
+    const tierPref = currentPrefs().tier || '';
+
+    P.categories.forEach(function (cat) {
+      const items = P.items.filter(function (i) {
+        return i.cat === cat.id && i.suits.indexOf(skinTypeId) >= 0;
+      });
+      if (!items.length) return;
+      // 选了预算档位就把同档位排前面（不排除其他档位，保证选择足够多）
+      if (tierPref) {
+        items.sort(function (a, b) {
+          return (b.tier === tierPref ? 1 : 0) - (a.tier === tierPref ? 1 : 0);
+        });
+      }
+
+      const group = el('div', 'sp-group');
+      group.innerHTML =
+        '<div class="sp-head">' +
+          '<span class="sp-icon">' + cat.icon + '</span>' +
+          '<b>' + escapeHtml(cat.name) + '</b>' +
+          '<small>' + escapeHtml(cat.why || '') + '</small>' +
+        '</div>' +
+        '<div class="sp-list">' +
+          items.map(function (it) {
+            return '<div class="sp-item">' +
+              '<div class="sp-top">' +
+                '<b class="sp-name">' + escapeHtml(it.name) + '</b>' +
+                '<span class="sp-tier sp-' + it.tier + '">' + (TIER_LABEL[it.tier] || '') + '</span>' +
+                (tierPref && it.tier === tierPref ? '<span class="sp-match">✓ 符合你的档位</span>' : '') +
+              '</div>' +
+              '<div class="sp-price">' + escapeHtml(it.price) + '</div>' +
+              '<p class="sp-why">' + escapeHtml(it.why) + '</p>' +
+              '<div class="sp-pc">' +
+                '<span class="sp-pros">👍 ' + it.pros.map(escapeHtml).join(' · ') + '</span>' +
+                '<span class="sp-cons">👎 ' + it.cons.map(escapeHtml).join(' · ') + '</span>' +
+              '</div>' +
+              (showShop
+                ? '<div class="sp-links"><span class="sp-links-label">搜同款</span>' + productLinks(it.name) + '</div>'
+                : '') +
+            '</div>';
+          }).join('') +
+        '</div>';
+      box.appendChild(group);
+    });
+    return box;
+  }
+
   function renderAnalysisResult(result, answers) {
     const demo = result.demo;
     const box = $('#analysis-result');
     box.classList.remove('hidden');
     box.innerHTML = '';
 
+    const card = function (title, txt) {
+      return '<div class="metric"><h5>' + title + '</h5><p>' + txt + '</p></div>';
+    };
+    const typeName = SKIN_TYPE_NAME;
+
     const head = el('div', 'result-box');
-    head.innerHTML = '<h4>🧪 肤质分析报告</h4><p class="sub">' + (result.mode === 'api' ? 'AI 视觉分析（含云端结果）' : '本地规则分析（演示模式）') + '</p>';
+    head.innerHTML = '<h4>🧪 肤质分析报告</h4><p class="sub">' +
+      (result.mode === 'api' ? 'AI 视觉分析（已结合云端判断）' : '本地规则分析（未使用云端 AI）') + '</p>';
     box.appendChild(head);
 
-    const grid = el('div', 'analysis-grid');
-    if (demo) {
-      const card = function (title, txt) { return '<div class="metric"><h5>' + title + '</h5><p>' + txt + '</p></div>'; };
-      grid.innerHTML += card('🩺 肤质判断', escapeHtml(demo.skinType.title));
-      grid.innerHTML += card('🧴 底妆建议', escapeHtml(demo.skinType.base));
-      grid.innerHTML += card('🎨 选色建议', escapeHtml((demo.undertone || '') + ' ' + (demo.depth || '')));
-      grid.innerHTML += card('🌙 妆后护肤', escapeHtml(demo.skinType.after));
-      if (demo.concerns && demo.concerns.length) {
-        grid.innerHTML += card('🎯 遮瑕与困扰', demo.concerns.map(escapeHtml).join('<br>· '));
-      }
-      if (demo.sensitive) grid.innerHTML += card('🌿 敏感提示', escapeHtml(demo.sensitive));
-      if (demo.climate) grid.innerHTML += card('🌤️ 环境适配', escapeHtml(demo.climate));
-      if (demo.image && demo.image.length) {
-        grid.innerHTML += card('📷 照片补充', demo.image.map(escapeHtml).join('<br>· '));
-      }
+    if (!demo) { box.appendChild(el('p', 'note', '没有得到有效的分析结果。')); return; }
+
+    /* ---- ① 信息完整性提示 ---- */
+    const comp = demo.completeness;
+    if (comp && !comp.complete) {
+      const w = el('div', 'warn-box');
+      w.innerHTML = '<h5>⚠️ 问卷信息不完整，结论会偏笼统</h5>' +
+        '<p>你没有回答：<b>' + comp.missing.map(escapeHtml).join('、') + '</b></p>' +
+        '<p>缺这些会影响建议的针对性 —— 比如不知道肤色基调，就没法给准确的选色建议；' +
+        '不知道肌肤困扰，遮瑕重点就只能是通用建议。建议返回上面补一下再重新生成。</p>' +
+        (comp.unsure.length ? '<p class="warn-sub">另外：' + comp.unsure.map(escapeHtml).join('；') + '</p>' : '');
+      box.appendChild(w);
+    } else if (comp && comp.unsure.length) {
+      const w = el('div', 'warn-box info');
+      w.innerHTML = '<h5>ℹ️ 有选项你选了「不确定」</h5><p>' +
+        comp.unsure.map(escapeHtml).join('；') + '</p>';
+      box.appendChild(w);
     }
-    box.appendChild(grid);
+
+    /* ---- ② 照片分析 ---- */
+    if (demo.infer) {
+      const p = el('div', 'result-box');
+      p.innerHTML = '<h4>📷 照片分析</h4>' +
+        '<p>从照片像素看，你的皮肤倾向是 <b class="hl">' + escapeHtml(typeName[demo.infer.guess] || '') +
+        '</b>（把握度：' + escapeHtml(demo.infer.confidence) + '）</p>' +
+        '<ul class="clean">' + demo.infer.signals.map(function (s) {
+          return '<li>' + escapeHtml(s) + '</li>';
+        }).join('') + '</ul>' +
+        '<p class="note">' + escapeHtml(demo.infer.caveat) + '</p>';
+      box.appendChild(p);
+    }
+
+    /* ---- ③ 肤质判断 ---- */
+    const st = demo.skinType;
+    const judge = el('div', 'result-box');
+    judge.innerHTML = '<h4>🩺 肤质判断</h4>' +
+      '<div class="skin-type-head">' +
+        '<div class="st-title">' + escapeHtml(st.title) + '</div>' +
+        (st.alias ? '<div class="st-alias">' + escapeHtml(st.alias) + '</div>' : '') +
+        '<div class="st-basis">判断依据：' + (demo.inferred
+          ? '你选了<b>「不确定」</b>，这里采用<b>照片推断</b>的结果 —— 建议用页面底部的自测方法核实一次'
+          : '<b>你的自述</b>' + (demo.infer ? '（照片观感：' + escapeHtml(typeName[demo.infer.guess] || '') +
+              '，把握度 ' + escapeHtml(demo.infer.confidence) + '）' : '')) +
+        '</div>' +
+      '</div>' +
+      '<div class="analysis-grid">' +
+        (st.traits ? card('📋 特征描述', escapeHtml(st.traits)) : '') +
+        (demo.image && demo.image.length
+          ? card('📷 照片补充观察', demo.image.map(escapeHtml).join('<br>')) : '') +
+      '</div>';
+    box.appendChild(judge);
+
+    /* ---- ④ 日常护理流程 ---- */
+    if (st.morning || st.night || st.avoid || st.star) {
+      const flow = el('div', 'result-box');
+      flow.innerHTML = '<h4>📋 日常护理流程</h4><div class="analysis-grid">' +
+        (st.morning ? card('☀️ 晨间流程', escapeHtml(st.morning)) : '') +
+        (st.night ? card('🌙 夜间流程', escapeHtml(st.night)) : '') +
+        (st.avoid ? card('⛔ 要避开的', escapeHtml(st.avoid)) : '') +
+        (st.star ? card('✨ 建议成分', escapeHtml(st.star)) : '') +
+        '</div>';
+      box.appendChild(flow);
+    }
+
+    /* ---- ⑤ 妆容方案 ---- */
+    const mk = el('div', 'result-box');
+    mk.innerHTML = '<h4>💄 妆容方案</h4><div class="analysis-grid">' +
+      card('🧴 底妆建议', escapeHtml(st.base)) +
+      (demo.undertone ? card('🎨 底色选择', escapeHtml(demo.undertone)) : '') +
+      (demo.depth ? card('🎨 深浅选择', escapeHtml(demo.depth)) : '') +
+      (demo.concerns && demo.concerns.length
+        ? card('🎯 遮瑕与困扰', demo.concerns.map(escapeHtml).join('<br>· ')) : '') +
+      (demo.sensitive ? card('🌿 敏感提示', escapeHtml(demo.sensitive)) : '') +
+      (demo.climate ? card('🌤️ 环境适配', escapeHtml(demo.climate)) : '') +
+      (st.after ? card('🌙 妆后护肤', escapeHtml(st.after)) : '') +
+      '</div>';
+    box.appendChild(mk);
+
+    /* ---- ⑥ 具体产品推荐 ---- */
+    const prod = skinProductBlock(demo.skinTypeId);
+    if (prod) {
+      const wrap = el('div', 'result-box');
+      const tierPref = currentPrefs().tier || '';
+      wrap.innerHTML = '<h4>🧴 具体产品推荐</h4>' +
+        '<p class="sub">按你的肤质「' + escapeHtml(st.title) + '」筛选，每个分类给 2 款以上。' +
+        '推荐理由来自公开评测与美妆社区的口碑共识' +
+        (tierPref ? '；符合你预算档位（' + escapeHtml(TIER_LABEL[tierPref] || '') + '）的排在前面' : '') +
+        '。</p>';
+      wrap.appendChild(prod);
+      wrap.appendChild(el('p', 'disclaimer', '⚠️ ' + D.skinProducts.disclaimer));
+      box.appendChild(wrap);
+    }
 
     if (result.mode === 'api' && result.apiText) {
       const ai = el('div', 'result-box');
@@ -2277,6 +2464,7 @@
     // 分析
     setupDropzone($('#drop-face'), $('#file-face'), handleFaceFile);
     renderQuiz();
+    renderSkinGuide();
     $('#btn-analyze').addEventListener('click', runAnalysis);
     $('#btn-clear-face').addEventListener('click', function () {
       state.faceFile = null;
