@@ -353,8 +353,36 @@ window.MAKEUP_DATA = {
         kw: '例如：国货 / 小众 / 日系 / 药妆 / 敏感肌可用',
         price: '例如：200元以内 / 100-300元 / 500元以上'
       }
+    },
+    {
+      id: 'total', name: '总预算', icon: '🎯', prefix: '', total: true,
+      note: '输入一个总金额，我们会从每个品类挑一款，凑成一套尽量好、且总价不超过这个数的方案（最多允许超 50 元）。',
+      brands: [],
+      hints: { total: '例如：1000（单位：元）' }
     }
   ],
+
+  /* ============ 总预算套餐（从每个品类挑一款凑成一套） ============ */
+  makeupSet: {
+    tolerance: 50,
+    presets: [
+      {
+        id: 'makeup', name: '彩妆全套',
+        note: '从零开始画完整妆容需要的 14 个品类，不含护肤和卸妆。',
+        cats: ['primer', 'foundation', 'concealer', 'powder', 'setting',
+               'brow', 'eyeshadow', 'eyeliner', 'mascara', 'blush',
+               'contour', 'lip', 'tool', 'brush']
+      },
+      {
+        id: 'all', name: '彩妆 + 护肤',
+        note: '在彩妆全套基础上加上洁面、化妆水、精华、面霜、防晒、卸妆、面膜。',
+        cats: ['primer', 'foundation', 'concealer', 'powder', 'setting',
+               'brow', 'eyeshadow', 'eyeliner', 'mascara', 'blush',
+               'contour', 'lip', 'tool', 'brush',
+               'cleanser', 'toner', 'serum', 'moist', 'sunscreen', 'remover', 'mask']
+      }
+    ]
+  },
 
   /* 任何妆容都用得上的基础工具 */
   shoppingBasics: [

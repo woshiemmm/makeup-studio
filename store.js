@@ -199,6 +199,8 @@ window.STORE = (function () {
     eye: '', face: '', grid: false, checklist: false, tier: '',
     customKw: '',         // 自定义档位：搜索关键词
     customPrice: '',      // 自定义档位：价格区间
+    budgetTotal: 0,       // 总预算模式的金额（元），0 表示未设置
+    budgetPreset: 'makeup', // 总预算套餐：makeup（彩妆全妆）/ all（彩妆+护肤）
     showShop: true,       // 是否显示化妆品购买入口
     guide: true           // 是否显示新手辅助（手法技巧 / 画错补救）
   };

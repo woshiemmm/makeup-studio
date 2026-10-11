@@ -490,6 +490,26 @@
             '<p class="tier-preview">实际搜索词示例：<b>' + escapeHtml(tierKeyword('散粉')) + '</b></p>' +
           '</div>'
         : '') +
+      (currentTier().total
+        ? '<div class="pers-group"><div class="pers-head"><b>🎯 总预算搭配</b>' +
+            '<small>从每个品类挑一款凑成一套，总价不超过这个金额（最多允许超 ' +
+              ((D.makeupSet && D.makeupSet.tolerance) || 50) + ' 元）</small></div>' +
+            '<div class="pers-custom">' +
+              '<label class="field"><span>总预算（元）</span>' +
+                '<input type="number" id="pers-budget" class="input" min="100" step="50" value="' +
+                  (Number(currentPrefs().budgetTotal) || '') + '" placeholder="例如 1000" /></label>' +
+              '<label class="field"><span>套餐范围</span>' +
+                '<select id="pers-preset" class="input">' +
+                  ((D.makeupSet && D.makeupSet.presets) || []).map(function (p) {
+                    return '<option value="' + p.id + '"' +
+                      (p.id === (currentPrefs().budgetPreset || 'makeup') ? ' selected' : '') + '>' +
+                      escapeHtml(p.name) + '（' + p.cats.length + ' 个品类）</option>';
+                  }).join('') +
+                '</select></label>' +
+            '</div>' +
+            '<p class="tier-preview">在「🛍️ 产品推荐」页可以看到搭配结果，也可以在那里直接设置。</p>' +
+          '</div>'
+        : '') +
       '<div class="pers-group">' +
         '<div class="pers-head"><b>🔧 显示选项</b><small>拨动开关即时生效，设置存在当前账号</small></div>' +
         '<div class="switch-list">' +
@@ -529,6 +549,27 @@
       [pkw, ppr].forEach(function (inp) {
         if (!inp) return;
         inp.addEventListener('change', commit);
+        inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') inp.blur(); });
+      });
+    }
+
+    // 总预算输入
+    const pbg = body.querySelector('#pers-budget');
+    const pps = body.querySelector('#pers-preset');
+    if (pbg || pps) {
+      const commitBudget = function () {
+        const v = Number((pbg ? pbg.value : '').trim()) || 0;
+        S.setPrefs({
+          budgetTotal: v,
+          budgetPreset: pps ? pps.value : (currentPrefs().budgetPreset || 'makeup')
+        });
+        budgetPick = 0;
+        flashPers(v ? ('已设为 ¥' + v + ' 总预算，去「🛍️ 产品推荐」看搭配') : '已清除总预算');
+        if (v) renderBudgetCard();
+      };
+      [pbg, pps].forEach(function (inp) {
+        if (!inp) return;
+        inp.addEventListener('change', commitBudget);
         inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') inp.blur(); });
       });
     }
@@ -1387,6 +1428,259 @@
     return box;
   }
 
+  /* ============ 总预算搭配（每个品类挑一款，总价不超预算的背包问题） ============ */
+  const TIER_WEIGHT = { value: 1, mid: 2.2, premium: 3.4 };
+
+  /* 一个产品「值不值得选」的评分：档位 + 该品类内的排序 + 与肤质的契合度 */
+  function productScore(it, list, skinType) {
+    const tw = TIER_WEIGHT[it.tier] || 1;
+    const idx = list.indexOf(it);
+    const rank = (list.length - idx) / list.length * 0.5;   // 越靠前（口碑越好）加分
+    let fit = 0;
+    if (skinType) fit = fitsSkin(it, skinType) ? 0.7 : -1.5; // 不适合自己肤质的明显降权
+    return tw + rank + fit;
+  }
+
+  /* 在总预算内找一套。
+   * 两阶段：
+   *   ① 先严格要求「总价 ≤ 预算」，在预算内挑尽量好的；
+   *   ② 只有预算确实装不下完整一套时，才放宽到「预算 + 容差」，
+   *      并且这一阶段改为「优先最省」，避免把容差也花满。
+   */
+  function solveBudgetSet(catIds, budget, tolerance, skinType) {
+    const all = (D.makeupProducts ? D.makeupProducts.items : [])
+      .concat(D.skinProducts ? D.skinProducts.items : []);
+
+    const groups = [];
+    catIds.forEach(function (cid) {
+      const list = all.filter(function (i) { return i.cat === cid; });
+      if (list.length) groups.push({ id: cid, list: list });
+    });
+    if (!groups.length) return { error: '没有可用的产品数据' };
+
+    const minTotal = groups.reduce(function (a, g) {
+      return a + Math.min.apply(null, g.list.map(priceNum));
+    }, 0);
+
+    /* 给定上限求解：DP 层数 = 品类数，状态 = 已花金额 */
+    const solveCap = function (cap) {
+      let dp = new Map();
+      dp.set(0, { score: 0, item: null, from: null });
+      const layers = [dp];
+
+      groups.forEach(function (g) {
+        const next = new Map();
+        g.list.forEach(function (it) {
+          const p = priceNum(it);
+          const q = productScore(it, g.list, skinType);
+          dp.forEach(function (st, spent) {
+            const ns = spent + p;
+            if (ns > cap) return;
+            const sc = st.score + q;
+            const cur = next.get(ns);
+            if (cur && cur.score >= sc) return;
+            next.set(ns, { score: sc, item: it, from: spent });
+          });
+        });
+        layers.push(next);
+        dp = next;
+      });
+
+      const rebuild = function (spent) {
+        const picks = [];
+        let s = spent;
+        for (let i = groups.length; i >= 1; i--) {
+          const node = layers[i].get(s);
+          if (!node || !node.item) return null;
+          picks.unshift(node.item);
+          s = node.from;
+        }
+        return picks.length === groups.length ? picks : null;
+      };
+
+      const out = [];
+      dp.forEach(function (st, spent) {
+        const picks = rebuild(spent);
+        if (picks) out.push({ score: st.score, spent: spent, picks: picks });
+      });
+      return out;
+    };
+
+    /* ① 严格在预算内 —— 分数高的优先，同分更省的优先 */
+    let sols = solveCap(budget);
+    let capped = budget;
+    let relaxed = false;
+
+    if (!sols.length) {
+      /* ② 预算装不下 → 放宽到容差，并且优先最省（避免把容差也花满） */
+      capped = budget + tolerance;
+      sols = solveCap(capped);
+      relaxed = true;
+    }
+    if (!sols.length) return { impossible: true, minTotal: minTotal, cap: budget + tolerance };
+
+    sols.sort(relaxed
+      ? function (a, b) { return (a.spent - b.spent) || (b.score - a.score); }
+      : function (a, b) { return (b.score - a.score) || (a.spent - b.spent); });
+
+    // 去重，最多留 6 套供「换一套」
+    const list = [], seen = {};
+    for (let i = 0; i < sols.length && list.length < 6; i++) {
+      const key = sols[i].picks.map(function (x) { return x.name; }).join('|');
+      if (seen[key]) continue;
+      seen[key] = 1;
+      list.push(sols[i]);
+    }
+    return { solutions: list, minTotal: minTotal, cap: capped, relaxed: relaxed, budget: budget };
+  }
+
+  let budgetPick = 0;                             // 「换一套」当前显示第几套
+
+  function currentBudgetPreset() {
+    const list = (D.makeupSet && D.makeupSet.presets) || [];
+    const id = currentPrefs().budgetPreset || 'makeup';
+    return list.find(function (p) { return p.id === id; }) || list[0] || null;
+  }
+
+  /* ============ 总预算搭配卡片 ============ */
+  function renderBudgetCard() {
+    const card = $('#budget-card');
+    if (!card) return;
+    const preset = currentBudgetPreset();
+    if (!preset) { card.classList.add('hidden'); return; }
+    card.classList.remove('hidden');
+
+    const prefs = currentPrefs();
+    const budget = Number(prefs.budgetTotal) || 0;
+    const tol = (D.makeupSet && D.makeupSet.tolerance) || 50;
+
+    /* ---- 还没设预算 → 就地输入 ---- */
+    if (!budget) {
+      card.innerHTML =
+        '<div class="card-title"><h3>🎯 总预算搭配</h3>' +
+          '<span class="hint">输入总金额，自动从每个品类挑一款凑成一套</span></div>' +
+        '<div class="budget-form">' +
+          '<label class="field"><span>总预算（元）</span>' +
+            '<input type="number" id="budget-total" class="input" min="100" step="50" placeholder="例如 1000" /></label>' +
+          '<label class="field"><span>套餐范围</span>' +
+            '<select id="budget-preset" class="input">' +
+              D.makeupSet.presets.map(function (p) {
+                return '<option value="' + p.id + '"' + (p.id === preset.id ? ' selected' : '') + '>' +
+                  escapeHtml(p.name) + '（' + p.cats.length + ' 个品类）</option>';
+              }).join('') +
+            '</select></label>' +
+          '<button class="btn primary" id="btn-budget-go" type="button">生成方案 →</button>' +
+        '</div>' +
+        '<p class="hint">' + escapeHtml(preset.note) +
+          ' 允许超出 <b>' + tol + ' 元</b>以内。</p>';
+
+      $('#btn-budget-go').addEventListener('click', function () {
+        const v = Number(($('#budget-total').value || '').trim());
+        if (!v || v < 100) { toast('请输入一个不小于 100 的金额', { type: 'warn' }); return; }
+        S.setPrefs({ budgetTotal: v, budgetPreset: $('#budget-preset').value, tier: 'total' });
+        budgetPick = 0;
+        renderBudgetCard();
+        renderPersonalize();
+        toast('已按 ¥' + v + ' 总预算搭配');
+      });
+      return;
+    }
+
+    /* ---- 已设预算 → 求解并展示 ---- */
+    const skinType = currentSkinType();
+    const res = solveBudgetSet(preset.cats, budget, tol, skinType);
+
+    if (res.impossible) {
+      card.innerHTML =
+        '<div class="card-title"><h3>🎯 总预算搭配</h3>' +
+          '<button class="btn ghost" id="btn-budget-reset" type="button">重新设置</button></div>' +
+        '<div class="warn-box"><h5>⚠️ 这个预算凑不出一套</h5>' +
+          '<p>「' + escapeHtml(preset.name) + '」共 ' + preset.cats.length + ' 个品类，' +
+          '按最便宜的选也要 <b>¥' + res.minTotal + '</b>（含允许超出的 ' + tol + ' 元，上限 ¥' + res.cap + '）。</p>' +
+          '<p>建议：把预算提到 <b>¥' + res.minTotal + '</b> 以上，或把套餐换成品类更少的「彩妆全套」。</p></div>' +
+        '<div class="budget-form">' +
+          '<label class="field"><span>调整总预算（元）</span>' +
+            '<input type="number" id="budget-total" class="input" min="100" step="50" value="' + budget + '" /></label>' +
+          '<button class="btn primary" id="btn-budget-go" type="button">重新生成</button>' +
+        '</div>';
+      bindBudgetReset();
+      $('#btn-budget-go').addEventListener('click', function () {
+        const v = Number(($('#budget-total').value || '').trim());
+        if (!v || v < 100) { toast('请输入一个不小于 100 的金额', { type: 'warn' }); return; }
+        S.setPrefs({ budgetTotal: v });
+        budgetPick = 0;
+        renderBudgetCard();
+        renderPersonalize();
+      });
+      return;
+    }
+
+    const sols = res.solutions;
+    if (budgetPick >= sols.length) budgetPick = 0;
+    const sol = sols[budgetPick];
+    const over = sol.spent - budget;
+
+    card.innerHTML =
+      '<div class="card-title"><h3>🎯 ¥' + budget + ' 总预算搭配</h3>' +
+        '<button class="btn ghost" id="btn-budget-reset" type="button">重新设置</button></div>' +
+      '<div class="budget-sum">' +
+        '<div class="bs-main">' +
+          '<span class="bs-total">¥' + sol.spent + '</span>' +
+          '<span class="bs-of"> / 预算 ¥' + budget + '</span>' +
+        '</div>' +
+        '<div class="bs-sub">' +
+          escapeHtml(preset.name) + ' · ' + preset.cats.length + ' 件 · ' +
+          (res.relaxed
+            ? '<span class="bs-over">预算装不下完整一套，这是最省的一套（超 ¥' + over + '，在允许的 ' + tol + ' 元内）</span>'
+            : (over > 0
+                ? '<span class="bs-over">超出 ¥' + over + '（允许 ' + tol + ' 元内）</span>'
+                : '<span class="bs-save">还剩 ¥' + (-over) + '</span>')) +
+        '</div>' +
+        (sols.length > 1
+          ? '<button class="btn ghost" id="btn-budget-again" type="button">换一套（' + (budgetPick + 1) + '/' + sols.length + '）</button>'
+          : '') +
+      '</div>' +
+      '<div class="budget-list">' +
+        sol.picks.map(function (it) {
+          const cat = ((D.makeupProducts || {}).categories || [])
+            .concat((D.skinProducts || {}).categories || [])
+            .find(function (c) { return c.id === it.cat; }) || { icon: '•', name: it.cat };
+          return '<div class="bl-item">' +
+            '<span class="bl-cat"><b>' + cat.icon + '</b> ' + escapeHtml(cat.name) + '</span>' +
+            '<span class="bl-name">' + escapeHtml(it.name) + '</span>' +
+            '<span class="bl-tier sp-' + it.tier + '">' + (TIER_LABEL[it.tier] || '') + '</span>' +
+            '<span class="bl-price">¥' + priceNum(it) + '</span>' +
+            (prefOn('showShop')
+              ? '<span class="bl-links">' + productLinks(it.name) + '</span>'
+              : '') +
+          '</div>';
+        }).join('') +
+      '</div>' +
+      '<p class="hint">' +
+        (skinType ? '已按你的肤质「' + (SKIN_TYPE_NAME[skinType] || '') + '」加权。' : '做过肤质分析后会按你的肤质加权。') +
+        '同价位下优先选口碑更好的；单品价格以平台实际为准。</p>';
+
+    bindBudgetReset();
+    const again = $('#btn-budget-again');
+    if (again) {
+      again.addEventListener('click', function () {
+        budgetPick = (budgetPick + 1) % sols.length;
+        renderBudgetCard();
+      });
+    }
+  }
+
+  function bindBudgetReset() {
+    const b = $('#btn-budget-reset');
+    if (b) {
+      b.addEventListener('click', function () {
+        S.setPrefs({ budgetTotal: 0, tier: (currentPrefs().tier === 'total' ? '' : currentPrefs().tier) });
+        renderBudgetCard();
+        renderPersonalize();
+        toast('已清除总预算设置', { type: 'info' });
+      });
+    }
+  }
   /* ============ 产品推荐页（品类目录 + 品类详情） ============ */
   let shopSort = 'pick';                        // pick | priceAsc | priceDesc
   let shopOnlyFit = false;                      // 是否只看适合自己肤质的
@@ -1413,6 +1707,8 @@
     const detCard = $('#shop-detail-card');
     if (!catCard || !detCard) return;
     const skinType = currentSkinType();
+
+    renderBudgetCard();                // 顶部「总预算搭配」卡片
 
     /* ---- 品类目录 ---- */
     const catalog = $('#shop-catalog');

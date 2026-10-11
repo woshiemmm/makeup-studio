@@ -1310,6 +1310,58 @@ ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
 .st-sorts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .st-label { font-size: 12.5px; font-weight: 700; color: var(--ink-faint); }
 
+/* --- 总预算搭配 --- */
+.budget-form {
+  display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end;
+  padding: 15px 16px; margin-bottom: 12px;
+  background: #fbf9fd; border: 1px solid #e6ddf0; border-radius: var(--radius-sm);
+}
+.budget-form .btn { margin-bottom: 1px; }
+.budget-sum {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 14px 16px; margin-bottom: 14px;
+  background: linear-gradient(135deg, var(--primary-faint), #fff);
+  border: 1.5px solid var(--primary-soft); border-radius: var(--radius-sm);
+}
+.bs-main { display: flex; align-items: baseline; gap: 2px; }
+.bs-total { font-size: 26px; font-weight: 800; color: var(--primary-2); letter-spacing: .5px; }
+.bs-of { font-size: 13px; color: var(--ink-faint); }
+.bs-sub { flex: 1; min-width: 160px; font-size: 12.5px; color: var(--ink-soft); line-height: 1.7; }
+.bs-over { color: #b8444f; font-weight: 700; }
+.bs-save { color: #34875a; font-weight: 700; }
+
+.budget-list { display: grid; gap: 0; border: 1.5px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.bl-item {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 11px 15px; border-bottom: 1px solid var(--line); background: #fff;
+}
+.bl-item:last-child { border-bottom: none; }
+.bl-cat {
+  flex: 0 0 120px; font-size: 12px; color: var(--ink-faint); font-weight: 700;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.bl-name { flex: 1 1 180px; font-size: 13.5px; font-weight: 700; color: var(--ink); min-width: 0; }
+.bl-tier {
+  padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 800;
+  background: #f1eef5; color: #6b5a80;
+}
+.bl-tier.sp-value { background: #eaf5ec; color: #34875a; }
+.bl-tier.sp-premium { background: #f6eef8; color: #8a4c9e; }
+.bl-price { font-size: 13.5px; font-weight: 800; color: var(--primary-2); min-width: 58px; text-align: right; }
+.bl-links { flex: 1 1 100%; display: flex; gap: 6px; flex-wrap: wrap; }
+.bl-links a {
+  padding: 4px 10px; border-radius: 12px; font-size: 11.5px; font-weight: 700;
+  background: var(--primary-faint); color: var(--primary-2); text-decoration: none;
+  transition: all .16s var(--ease);
+}
+.bl-links a:hover { background: var(--primary); color: #fff; }
+
+@media (max-width: 700px) {
+  .budget-form { grid-template-columns: 1fr; }
+  .bl-cat { flex: 1 1 100%; }
+  .bl-price { margin-left: auto; }
+}
+
 @media (max-width: 640px) {
   .guide-body { padding: 4px 14px 16px; }
   .gm-time { margin-left: 0; flex-basis: 100%; }
