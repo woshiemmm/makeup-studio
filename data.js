@@ -3526,7 +3526,6 @@ window.MAKEUP_DATA = {
   /* ============ 界面主题配色（设置 → 个性化 里切换） ============ */
   themes: [
     { id: 'rose',     name: '玫瑰粉', colors: ['#ec5f8a', '#d43d74', '#fde7ef'], desc: '默认，甜而不腻' },
-    { id: 'bluepink', name: '棉花糖', colors: ['#4a90d9', '#ec6f9f', '#ffffff'], desc: '蓝 + 粉 + 白' },
     { id: 'berry',    name: '莓果红', colors: ['#c9426f', '#a82c56', '#fbe7ee'], desc: '更沉稳的红调' },
     { id: 'lavender', name: '薰衣草', colors: ['#9b6bd6', '#7b4fb5', '#f1e9fa'], desc: '柔和紫，安静' },
     { id: 'galaxy',   name: '星空紫', colors: ['#6a5fd6', '#5246b8', '#ece9fb'], desc: '靛蓝，偏清冷' },

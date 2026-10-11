@@ -507,6 +507,13 @@
   function currentPrefs() { return S.getPrefs(); }
 
   /* ============ 界面主题与风格 ============ */
+  /* 主题被下线后，本地存着的旧 id 会失效 —— 统一回落到默认，避免界面卡在无选中状态 */
+  function currentThemeId() {
+    const id = currentPrefs().theme;
+    const ok = (D.themes || []).some(function (t) { return t.id === id; });
+    return ok ? id : 'rose';
+  }
+
   function applyTheme(id) {
     const t = (id || 'rose');
     const root = document.documentElement;
@@ -523,9 +530,8 @@
   }
 
   function applyAppearance() {
-    const p = currentPrefs();
-    applyTheme(p.theme);
-    applyUIStyle(p.uiStyle);
+    applyTheme(currentThemeId());
+    applyUIStyle(currentPrefs().uiStyle);
   }
 
   function setTheme(id) {
@@ -603,9 +609,9 @@
 
     /* 主题色卡 */
     const themeGrid = function () {
-      const cur = currentPrefs().theme || 'rose';
+      const cur = currentThemeId();
       return '<div class="pers-group">' +
-        '<div class="pers-head"><b>🎨 界面主题</b><small>12 套配色，点一下立刻生效，按账号保存</small></div>' +
+        '<div class="pers-head"><b>🎨 界面主题</b><small>' + (D.themes || []).length + ' 套配色，点一下立刻生效，按账号保存</small></div>' +
         '<div class="theme-grid">' +
           (D.themes || []).map(function (t) {
             return '<button class="theme-swatch' + (t.id === cur ? ' active' : '') + '" data-theme="' + t.id +
@@ -625,7 +631,9 @@
     const styleGrid = function () {
       const cur = currentPrefs().uiStyle || 'soft';
       return '<div class="pers-group">' +
-        '<div class="pers-head"><b>🧊 界面风格</b><small>和配色独立，12 × 3 一共 36 种组合</small></div>' +
+        '<div class="pers-head"><b>🧊 界面风格</b><small>和配色独立，' + (D.themes || []).length + ' × ' +
+          (D.uiStyles || []).length + ' 一共 ' + ((D.themes || []).length * (D.uiStyles || []).length) +
+          ' 种组合</small></div>' +
         '<div class="style-grid">' +
           (D.uiStyles || []).map(function (s) {
             return '<button class="style-card' + (s.id === cur ? ' active' : '') + '" data-uistyle="' + s.id +

@@ -13,10 +13,6 @@
 
   /* 主色渐变：所有主题共用，会自动跟随 --primary / --primary-2 变化 */
   --primary-grad: linear-gradient(135deg, var(--primary), var(--primary-2));
-  /* 文字压在渐变 / 按钮上的颜色（主题可覆盖） */
-  --on-grad: #ffffff;
-  --on-btn: #ffffff;
-  --btn-grad: var(--primary-grad);
   /* 背景光晕：用主题的 RGB 值算出来，换主题时页面底色也跟着变 */
   --glow-1: rgba(var(--primary-rgb), 0.11);
   --glow-2: rgba(var(--gold-rgb), 0.11);
@@ -132,26 +128,6 @@ html[data-theme="berry"] {
   --ring: 0 0 0 4px rgba(201, 66, 111, .16);
 }
 
-/* 棉花糖：只用蓝、粉、白三个颜色。
- * 渐变走「蓝 → 白 → 粉」—— 蓝和粉直接混，中点必然是紫的；
- * 从白色中间穿过去就没有这个问题，而且三个颜色各占一段，正好是这套主题的三个色。 */
-html[data-theme="bluepink"] {
-  --primary: #4a90d9; --primary-2: #ec6f9f; --primary-deep: #2f6cb5;
-  --primary-soft: #eef5fd; --primary-faint: #f8fbff;
-  /* 主题渐变：天蓝 → 淡蓝 → 白 → 淡粉 */
-  --primary-grad: linear-gradient(135deg, #6fb3e8 0%, #cfe6f8 33%, #ffffff 66%, #f7c4d8 100%);
-  --on-grad: #16324a;   /* 渐变上的文字色：白底太亮、白字又看不清，用深藏青 */
-  /* 按钮单独一套配色：单一蓝色系，不掺粉，白字才清晰 */
-  --btn-grad: linear-gradient(135deg, #3a78bd 0%, #2a63a8 100%);
-  --on-btn: #ffffff;
-  --gold: #f2a0be; --gold-soft: #fdf1f6;
-  --bg: #ffffff; --bg-grad-1: #ffffff; --bg-grad-2: #f3f8fe;
-  --line: #e8eff9; --line-strong: #d4e2f2;
-  --shadow-sm: 0 2px 8px rgba(74, 144, 217, .08);
-  --shadow-md: 0 10px 30px rgba(74, 144, 217, .13);
-  --shadow-lg: 0 18px 50px rgba(74, 144, 217, .20);
-  --ring: 0 0 0 4px rgba(74, 144, 217, .20);
-}
 html[data-theme="mint"] {
   --primary: #35b3a4; --primary-2: #1f9184; --primary-deep: #14705f;
   --primary-soft: #e4f7f4; --primary-faint: #f1fbf9;
@@ -195,7 +171,6 @@ html[data-theme="matcha"] { --primary-rgb: 79, 168, 122; --gold-rgb: 133, 196, 1
 html[data-theme="peach"] { --primary-rgb: 240, 138, 93; --gold-rgb: 242, 177, 131; }
 html[data-theme="cocoa"] { --primary-rgb: 176, 130, 104; --gold-rgb: 208, 169, 141; }
 html[data-theme="ink"] { --primary-rgb: 91, 91, 102; --gold-rgb: 168, 150, 122; }
-html[data-theme="bluepink"] { --primary-rgb: 74, 144, 217; --gold-rgb: 242, 160, 190; }
 html[data-theme="mint"] { --primary-rgb: 53, 179, 164; --gold-rgb: 126, 207, 196; }
 html[data-theme="coral"] { --primary-rgb: 242, 115, 107; --gold-rgb: 245, 169, 143; }
 html[data-theme="galaxy"] { --primary-rgb: 106, 95, 214; --gold-rgb: 179, 154, 224; }
@@ -492,7 +467,7 @@ body {
 .nav-item:hover { background: var(--primary-soft); color: var(--primary-2); transform: translateX(3px); }
 .nav-item.active {
   background: var(--primary-grad);
-  color: var(--on-grad); box-shadow: 0 8px 18px rgba(var(--primary-rgb), 0.32);
+  color: #fff; box-shadow: 0 8px 18px rgba(var(--primary-rgb), 0.32);
 }
 .nav-item.active::before {
   content: ""; position: absolute; left: -20px; top: 50%; transform: translateY(-50%);
@@ -566,8 +541,8 @@ body {
   cursor: pointer; transition: all .2s var(--ease);
 }
 .btn.primary {
-  background: var(--btn-grad);
-  color: var(--on-btn); box-shadow: 0 8px 20px rgba(var(--primary-rgb), 0.32), inset 0 1px 0 rgba(255,255,255,.28);
+  background: var(--primary-grad);
+  color: #fff; box-shadow: 0 8px 20px rgba(var(--primary-rgb), 0.32), inset 0 1px 0 rgba(255,255,255,.28);
 }
 .btn.primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(var(--primary-rgb), 0.42); }
 .btn.primary:active:not(:disabled) { transform: translateY(0) scale(.98); }
@@ -684,7 +659,7 @@ body {
 .stage-tab:hover { border-color: var(--primary); color: var(--primary-2); transform: translateY(-1px); }
 .stage-tab.active {
   background: var(--primary-grad);
-  border-color: transparent; color: var(--on-grad);
+  border-color: transparent; color: #fff;
   box-shadow: 0 8px 18px rgba(var(--primary-rgb), 0.30);
 }
 .stage-tab.done { border-color: #cfe8db; color: #3f8f66; background: #f2fbf6; }
@@ -735,7 +710,7 @@ body {
   flex: 0 0 auto; width: 34px; height: 34px; position: relative; z-index: 1;
   border-radius: 50%;
   background: var(--primary-grad);
-  color: var(--on-grad); font-size: 14px; font-weight: 800;
+  color: #fff; font-size: 14px; font-weight: 800;
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.32), 0 0 0 4px var(--primary-faint);
 }
@@ -791,7 +766,7 @@ body {
 .aid-chip:hover { border-color: var(--primary); color: var(--primary-2); background: var(--primary-faint); transform: translateY(-1px); }
 .aid-chip.active {
   background: var(--primary-grad);
-  border-color: transparent; color: var(--on-grad);
+  border-color: transparent; color: #fff;
   box-shadow: 0 5px 14px rgba(var(--primary-rgb), .28);
 }
 
@@ -1145,7 +1120,7 @@ body {
 .chip:hover { border-color: var(--primary); color: var(--primary-2); transform: translateY(-1px); }
 .chip.active {
   background: var(--primary-grad);
-  color: var(--on-grad); border-color: transparent;
+  color: #fff; border-color: transparent;
   box-shadow: 0 6px 16px rgba(var(--primary-rgb), 0.30);
   animation: popIn .22s var(--ease);
 }
@@ -1355,7 +1330,7 @@ body {
   flex: 0 0 auto; width: 34px; height: 34px; border-radius: 11px;
   display: flex; align-items: center; justify-content: center;
   background: var(--primary-grad);
-  color: var(--on-grad); font-size: 16px; font-weight: 800;
+  color: #fff; font-size: 16px; font-weight: 800;
   box-shadow: 0 5px 14px rgba(var(--primary-rgb), 0.30);
 }
 .proc-stage-head h3 { margin: 0; font-size: 19px; font-weight: 800; flex: 1; min-width: 0; }
@@ -1888,7 +1863,7 @@ ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
   flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   background: var(--primary-grad);
-  color: var(--on-grad); font-size: 13px; padding-left: 2px;
+  color: #fff; font-size: 13px; padding-left: 2px;
   box-shadow: 0 4px 10px rgba(var(--primary-rgb), 0.30);
 }
 .tut-info { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.4; }
