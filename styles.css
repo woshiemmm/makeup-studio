@@ -1369,6 +1369,29 @@ ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
 .bn-item b { font-size: 14px; }
 .bn-item i { font-style: normal; font-size: 11.5px; color: var(--primary-2); font-weight: 800; }
 
+/* 超平价档 & 安全提示 */
+.sp-tier.sp-cheap { background: #fdeee4; color: #b06a2c; }
+.sp-risk-tag {
+  padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 800;
+  background: #fdeaea; color: #b8444f;
+}
+.sp-risk {
+  margin-top: 9px; padding: 11px 14px; border-radius: var(--radius-xs);
+  background: #fdf3f4; border-left: 3px solid #e08b96;
+  font-size: 12.5px; line-height: 1.8; color: #8a4a55;
+}
+.bl-item.bl-risk { background: #fffbfb; }
+.safety-box {
+  margin-top: 16px; padding: 16px 18px; border-radius: var(--radius-sm);
+  background: #fff7f2; border: 1.5px solid #f0cbb0; border-left-width: 4px;
+}
+.safety-box h5 { margin: 0 0 10px; font-size: 14px; color: #a8552c; }
+.safety-box p { margin: 0 0 8px; font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
+.safety-box p:last-child { margin-bottom: 0; }
+.safety-box b { color: #a8552c; }
+.safety-box ul.clean li { font-size: 12.5px; }
+.safety-note { font-size: 12px !important; color: var(--ink-faint) !important; }
+
 @media (max-width: 700px) {
   .budget-form { grid-template-columns: 1fr; }
   .bl-cat { flex: 1 1 100%; }

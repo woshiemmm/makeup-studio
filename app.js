@@ -1294,7 +1294,7 @@
 
   /* ============ 肤质自测方法 ============ */
   const SKIN_TYPE_NAME = { oily: '油性', dry: '干性', combo: '混合', normal: '中性', sensitive: '敏感' };
-  const TIER_LABEL = { value: '平价', mid: '中端', premium: '高端' };
+  const TIER_LABEL = { cheap: '超平价', value: '平价', mid: '中端', premium: '高端' };
 
   function renderSkinGuide() {
     const body = $('#skin-guide-body');
@@ -1378,6 +1378,7 @@
         '<span class="sp-tier sp-' + it.tier + '">' + (TIER_LABEL[it.tier] || '') + '</span>' +
         (tierPref && it.tier === tierPref ? '<span class="sp-match">✓ 符合你的档位</span>' : '') +
         (unfit ? '<span class="sp-unfit-tag">不太适合你的肤质</span>' : '') +
+        (it.risk ? '<span class="sp-risk-tag">⚠️ 需评估风险</span>' : '') +
       '</div>' +
       '<div class="sp-price">' + escapeHtml(it.price) + '</div>' +
       '<p class="sp-why">' + escapeHtml(it.why) + '</p>' +
@@ -1385,6 +1386,7 @@
         '<span class="sp-pros">👍 ' + it.pros.map(escapeHtml).join(' · ') + '</span>' +
         '<span class="sp-cons">👎 ' + it.cons.map(escapeHtml).join(' · ') + '</span>' +
       '</div>' +
+      (it.riskNote ? '<div class="sp-risk">⚠️ ' + escapeHtml(it.riskNote) + '</div>' : '') +
       (showShop
         ? '<div class="sp-links"><span class="sp-links-label">搜同款</span>' + productLinks(it.name) + '</div>'
         : '') +
@@ -1429,16 +1431,18 @@
   }
 
   /* ============ 总预算搭配（每个品类挑一款，总价不超预算的背包问题） ============ */
-  const TIER_WEIGHT = { value: 1, mid: 2.2, premium: 3.4 };
+  const TIER_WEIGHT = { cheap: 0.8, value: 1, mid: 2.2, premium: 3.4 };
 
-  /* 一个产品「值不值得选」的评分：档位 + 该品类内的排序 + 与肤质的契合度 */
+  /* 一个产品「值不值得选」的评分：档位 + 该品类内的排序 + 与肤质的契合度
+   * 低价白牌额外扣分 —— 保证它只在预算逼不得已时才会被选中。 */
   function productScore(it, list, skinType) {
     const tw = TIER_WEIGHT[it.tier] || 1;
     const idx = list.indexOf(it);
     const rank = (list.length - idx) / list.length * 0.5;   // 越靠前（口碑越好）加分
     let fit = 0;
     if (skinType) fit = fitsSkin(it, skinType) ? 0.7 : -1.5; // 不适合自己肤质的明显降权
-    return tw + rank + fit;
+    const risk = it.risk ? -3 : 0;                           // 有安全风险的低价白牌
+    return tw + rank + fit + risk;
   }
 
   /* 在总预算内找一套。
@@ -1532,70 +1536,103 @@
       return list;
     };
 
-    /* ① 全套在预算内 */
-    let use = ordered, dropped = [], relaxed = false, capped = budget;
+    /* ① 全套能在「预算内」配齐 → 在预算内挑尽量好的 */
+    let dropped = [], relaxed = false;
     let sols = solveCap(ordered, budget);
-
-    if (!sols.length) {
-      /* 全套在「预算 + 容差」内？ */
-      sols = solveCap(ordered, budget + tolerance);
-      if (sols.length) {
-        relaxed = true;
-        capped = budget + tolerance;
-      }
-    }
-
     if (sols.length) {
       return {
-        solutions: dedupe(sols, relaxed),
-        minTotal: minTotal, cap: capped, relaxed: relaxed, budget: budget,
+        solutions: dedupe(sols, false),
+        minTotal: minTotal, cap: budget, relaxed: false, budget: budget,
         reduced: false, dropped: [], usedCount: ordered.length, fullCount: ordered.length
       };
     }
 
-    /* ② 全套实在装不下 → 按重要性砍到装得下为止（一律用预算，不放容差） */
-    use = [];
-    let acc = 0;
-    for (let i = 0; i < ordered.length; i++) {
-      const c = cheapest(ordered[i]);
-      if (acc + c > budget) break;
-      acc += c;
-      use.push(ordered[i]);
-    }
-    /* 连最便宜的一件都超预算 → 退化成「就买最便宜的那一件」 */
-    if (!use.length) {
-      const flat = [];
-      ordered.forEach(function (g) {
-        g.list.forEach(function (it) { flat.push({ g: g, it: it, p: priceNum(it) }); });
-      });
-      flat.sort(function (a, b) { return a.p - b.p; });
-      const pick = flat[0];
-      if (pick && pick.p <= budget + tolerance) {
-        use = [pick.g];
+    /* ② 全套配不齐 → 在「严格预算内」尽可能多买几个品类（数量优先）。
+     *    先把一件底妆保底放进去 —— 没有底妆的套装没法用。 */
+    const baseIdx = ordered.findIndex(function (g) {
+      return g.id === 'foundation' || g.id === 'cushion';
+    });
+    let baseItem = null, restGroups = ordered;
+    if (baseIdx >= 0) {
+      const g = ordered[baseIdx];
+      const affordable = g.list
+        .filter(function (it) { return priceNum(it) <= budget; })
+        .sort(function (a, b) { return priceNum(a) - priceNum(b); });
+      if (affordable.length) {
+        baseItem = affordable[0];               // 选最便宜的，把预算留给更多品类
+        restGroups = ordered.filter(function (x, i) { return i !== baseIdx; });
       }
     }
-    dropped = ordered.filter(function (g) { return use.indexOf(g) < 0; });
+    const baseCost = baseItem ? priceNum(baseItem) : 0;
 
-    if (!use.length) {
-      return { impossible: true, minTotal: minTotal, cap: budget + tolerance,
-               fullCount: ordered.length };
-    }
-
-    sols = solveCap(use, budget);
-    if (!sols.length) sols = solveCap(use, budget + tolerance);
-    if (!sols.length) {
-      return { impossible: true, minTotal: minTotal, cap: budget + tolerance,
-               fullCount: ordered.length };
-    }
-
-    return {
-      solutions: dedupe(sols, true),
-      minTotal: minTotal, cap: budget, relaxed: false, budget: budget,
-      reduced: true,
-      dropped: dropped.map(function (g) { return { cat: g.id, min: cheapest(g) }; }),
-      restCost: sumCheapest(dropped),
-      usedCount: use.length, fullCount: ordered.length
+    /* 数量优先 DP：每个品类要么不买，要么买其中一件 */
+    const pickMaxCount = function (gs, cap) {
+      let dp = new Map();
+      dp.set(0, { count: 0, score: 0, picks: [] });
+      gs.forEach(function (g) {
+        const next = new Map(dp);              // 继承「这个品类不买」
+        g.list.forEach(function (it) {
+          const p = priceNum(it);
+          if (p > cap) return;
+          const q = productScore(it, g.list, skinType);
+          dp.forEach(function (st, spent) {
+            const ns = spent + p;
+            if (ns > cap) return;
+            const count = st.count + 1;
+            const score = st.score + q;
+            const cur = next.get(ns);
+            if (cur && (cur.count > count || (cur.count === count && cur.score >= score))) return;
+            next.set(ns, { count: count, score: score, picks: st.picks.concat(it) });
+          });
+        });
+        dp = next;
+      });
+      let best = null;
+      dp.forEach(function (st) {
+        if (!best || st.count > best.count || (st.count === best.count && st.score > best.score)) best = st;
+      });
+      return best;
     };
+
+    const got = pickMaxCount(restGroups, Math.max(0, budget - baseCost));
+    let picks = (got ? got.picks : []).slice();
+    if (baseItem) picks.unshift(baseItem);
+
+    if (picks.length) {
+      const spent = picks.reduce(function (a, it) { return a + priceNum(it); }, 0);
+      dropped = ordered.filter(function (g) {
+        return !picks.some(function (it) { return it.cat === g.id; });
+      });
+      return {
+        solutions: [{ score: 0, spent: spent, picks: picks }],
+        minTotal: minTotal, cap: budget, relaxed: false, budget: budget,
+        reduced: true, countFirst: true,
+        dropped: dropped.map(function (g) { return { cat: g.id, min: cheapest(g) }; }),
+        restCost: sumCheapest(dropped),
+        usedCount: picks.length, fullCount: ordered.length
+      };
+    }
+
+    /* ③ 严格预算内连一件都买不起 → 才动用容差，至少给一件 */
+    const flat = [];
+    ordered.forEach(function (g) {
+      g.list.forEach(function (it) { flat.push({ it: it }); });
+    });
+    flat.sort(function (a, b) { return priceNum(a.it) - priceNum(b.it); });
+    const only = flat[0];
+    if (only && priceNum(only.it) <= budget + tolerance) {
+      return {
+        solutions: [{ score: 0, spent: priceNum(only.it), picks: [only.it] }],
+        minTotal: minTotal, cap: budget + tolerance, relaxed: true, budget: budget,
+        reduced: true, countFirst: true,
+        dropped: ordered.filter(function (g) { return g.id !== only.it.cat; })
+          .map(function (g) { return { cat: g.id, min: cheapest(g) }; }),
+        restCost: 0, usedCount: 1, fullCount: ordered.length
+      };
+    }
+
+    return { impossible: true, minTotal: minTotal, cap: budget + tolerance,
+             fullCount: ordered.length };
   }
 
   let budgetPick = 0;                             // 「换一套」当前显示第几套
@@ -1747,10 +1784,11 @@
           const cat = ((D.makeupProducts || {}).categories || [])
             .concat((D.skinProducts || {}).categories || [])
             .find(function (c) { return c.id === it.cat; }) || { icon: '•', name: it.cat };
-          return '<div class="bl-item">' +
+          return '<div class="bl-item' + (it.risk ? ' bl-risk' : '') + '">' +
             '<span class="bl-cat"><b>' + cat.icon + '</b> ' + escapeHtml(cat.name) + '</span>' +
             '<span class="bl-name">' + escapeHtml(it.name) + '</span>' +
             '<span class="bl-tier sp-' + it.tier + '">' + (TIER_LABEL[it.tier] || '') + '</span>' +
+            (it.risk ? '<span class="sp-risk-tag">⚠️</span>' : '') +
             '<span class="bl-price">¥' + priceNum(it) + '</span>' +
             (prefOn('showShop')
               ? '<span class="bl-links">' + productLinks(it.name) + '</span>'
@@ -1758,6 +1796,31 @@
           '</div>';
         }).join('') +
       '</div>' +
+
+      /* 含低价白牌时给出安全提示 */
+      ((function () {
+        const risky = sol.picks.filter(function (it) { return it.risk; });
+        if (!risky.length) return '';
+        return '<div class="safety-box">' +
+          '<h5>⚠️ 这套里有 ' + risky.length + ' 件是低价白牌，请先看这段</h5>' +
+          '<p>低价商品能让你用同样的钱买到更多品类，但<b>安全上没有保障</b>。这些产品通常：</p>' +
+          '<ul class="clean">' +
+            '<li>没有完整备案信息，成分表可能缺失或与实物不符</li>' +
+            '<li>微生物、重金属（铅、砷）、石棉残留超标的风险更高</li>' +
+            '<li>防腐体系较弱，开封后更容易变质</li>' +
+          '</ul>' +
+          '<p><b>建议这样用：</b></p>' +
+          '<ul class="clean">' +
+            '<li>优先加钱换成「<b>正规品牌小样 / 旅行装</b>」—— 同样便宜但配方有保障</li>' +
+            '<li>上脸前先在<b>耳后或手腕内侧试 24 小时</b>，无红肿刺痛再用</li>' +
+            '<li><b>眼周和嘴唇尽量别用白牌</b>：眼线、睫毛膏、口红、润唇这几项风险最高</li>' +
+            '<li>一出现刺痛、发痒、起疹、奇效（突然特别白嫩）<b>立刻停用</b></li>' +
+          '</ul>' +
+          '<p class="safety-note">下面是这套里带风险标记的几件：' +
+            risky.map(function (it) { return escapeHtml(it.name.replace('【超平价】', '')); }).join('、') +
+          '</p>' +
+        '</div>';
+      })()) +
 
       /* 还没买的：按建议顺序列出来，并给出各自最低价 */
       (res.reduced && res.dropped.length
