@@ -1380,6 +1380,16 @@ ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
   background: #fdf3f4; border-left: 3px solid #e08b96;
   font-size: 12.5px; line-height: 1.8; color: #8a4a55;
 }
+/* 综合评分 */
+.sp-score {
+  padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 700;
+  background: #eef2f9; color: #4c5a92; cursor: help;
+}
+.sp-score b { font-size: 12.5px; }
+.bl-score {
+  padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700;
+  background: #eef2f9; color: #4c5a92;
+}
 .bl-item.bl-risk { background: #fffbfb; }
 .safety-box {
   margin-top: 16px; padding: 16px 18px; border-radius: var(--radius-sm);

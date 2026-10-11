@@ -1371,11 +1371,14 @@
     const tierPref = currentPrefs().tier || '';
     const skinType = currentSkinType();
     const unfit = skinType && !fitsSkin(it, skinType);
+    const sc = scoreOf(it);
     return '<div class="sp-item' + (unfit ? ' sp-unfit-item' : '') + '">' +
       '<div class="sp-top">' +
         (o.rank ? '<span class="sp-rank">' + escapeHtml(o.rank) + '</span>' : '') +
         '<b class="sp-name">' + escapeHtml(it.name) + '</b>' +
         '<span class="sp-tier sp-' + it.tier + '">' + (TIER_LABEL[it.tier] || '') + '</span>' +
+        '<span class="sp-score" title="综合评分：档位 40% + 口碑排序 22% + 优缺点 14% + 性价比 12% + 安全性 10%">' +
+          '综合 <b>' + sc + '</b></span>' +
         (tierPref && it.tier === tierPref ? '<span class="sp-match">✓ 符合你的档位</span>' : '') +
         (unfit ? '<span class="sp-unfit-tag">不太适合你的肤质</span>' : '') +
         (it.risk ? '<span class="sp-risk-tag">⚠️ 需评估风险</span>' : '') +
@@ -1431,9 +1434,57 @@
   }
 
   /* ============ 总预算搭配（每个品类挑一款，总价不超预算的背包问题） ============ */
-  /* 档位分差要拉开：否则算法宁可把预算摊到十几个小升级上，
-   * 也不愿意把最重要的底妆从 25 块小样换成正经产品。 */
-  const TIER_WEIGHT = { cheap: 0.4, value: 1.0, mid: 3.2, premium: 6.0 };
+  /* 档位 → 基础分（0~1）。刻度要做成明显「凸」的：
+   * 每升一档的收益递增，算法才会在预算充足时把重点品类推到高端，
+   * 而不是把钱摊成十几个中端小升级。 */
+  const TIER_Q = { cheap: 0.02, value: 0.10, mid: 0.35, premium: 1.0 };
+
+  /* ============ 综合品质分（0~1） ============
+   * 不只看档位，而是把五项合起来看「总体」：
+   *   ① 档位        —— 40%
+   *   ② 口碑排序    —— 22%（该品类内，作者按口碑从好到差排的）
+   *   ③ 优缺点比    —— 14%（优点多、缺点少说明表现更均衡）
+   *   ④ 同档性价比  —— 12%（同样档位里更便宜的分更高）
+   *   ⑤ 安全性      —— 10%（低价白牌扣分）
+   * 再叠加与用户肤质的契合度。
+   */
+  function qualityOf(it, list, skinType) {
+    const tier = TIER_Q[it.tier] !== undefined ? TIER_Q[it.tier] : 0.3;
+
+    const idx = list.indexOf(it);
+    const rank = list.length > 1 ? (list.length - 1 - idx) / (list.length - 1) : 1;
+
+    const np = (it.pros || []).length, nc = (it.cons || []).length;
+    const pc = (np + nc) ? np / (np + nc) : 0.5;
+
+    const sameTier = list.filter(function (x) { return x.tier === it.tier; });
+    let value = 0.5;
+    if (sameTier.length > 1) {
+      const ps = sameTier.map(priceNum);
+      const lo = Math.min.apply(null, ps), hi = Math.max.apply(null, ps);
+      value = hi > lo ? (hi - priceNum(it)) / (hi - lo) : 1;
+    }
+
+    const safe = it.risk ? 0 : 1;
+
+    let q = 0.40 * tier + 0.22 * rank + 0.14 * pc + 0.12 * value + 0.10 * safe;
+    if (skinType) q += fitsSkin(it, skinType) ? 0.06 : -0.12;
+    return Math.max(0, Math.min(1, q));
+  }
+
+  /* 预算搭配用的评分 = 综合品质 × 品类权重（钱优先花在重要品类上） */
+  function productScore(it, list, skinType) {
+    const cw = CAT_WEIGHT[it.cat] || 1;
+    return cw * qualityOf(it, list, skinType);
+  }
+
+  /* 拿到一个产品的综合分（0~100），供界面显示 */
+  function scoreOf(it) {
+    const all = (D.makeupProducts ? D.makeupProducts.items : [])
+      .concat(D.skinProducts ? D.skinProducts.items : []);
+    const list = all.filter(function (x) { return x.cat === it.cat; });
+    return Math.round(qualityOf(it, list, currentSkinType()) * 100);
+  }
 
   /* 品类权重：决定「这个品类值不值得多花钱」。
    * 没有它的话，算法会把预算砸在最容易买到高端货的品类上
@@ -1450,19 +1501,6 @@
     contour: 0.9, mask: 0.9,
     brush: 0.8, tool: 0.8, lashes: 0.7, touchup: 0.7
   };
-
-  /* 一个产品「值不值得选」的评分 = 品类权重 ×（档位 + 排序 + 肤质契合 + 风险）
-   * 低价白牌额外扣分，保证它只在预算逼不得已时才会被选中。 */
-  function productScore(it, list, skinType) {
-    const cw = CAT_WEIGHT[it.cat] || 1;
-    const tw = TIER_WEIGHT[it.tier] || 1;
-    const idx = list.indexOf(it);
-    const rank = (list.length - idx) / list.length * 0.5;   // 越靠前（口碑越好）加分
-    let fit = 0;
-    if (skinType) fit = fitsSkin(it, skinType) ? 0.7 : -1.5; // 不适合自己肤质的明显降权
-    const risk = it.risk ? -3 : 0;                           // 有安全风险的低价白牌
-    return cw * (tw + rank + fit + risk);
-  }
 
   /* 在总预算内找一套。
    * 三阶段：
@@ -1807,6 +1845,7 @@
             '<span class="bl-cat"><b>' + cat.icon + '</b> ' + escapeHtml(cat.name) + '</span>' +
             '<span class="bl-name">' + escapeHtml(it.name) + '</span>' +
             '<span class="bl-tier sp-' + it.tier + '">' + (TIER_LABEL[it.tier] || '') + '</span>' +
+            '<span class="bl-score">综合 ' + scoreOf(it) + '</span>' +
             (it.risk ? '<span class="sp-risk-tag">⚠️</span>' : '') +
             '<span class="bl-price">¥' + priceNum(it) + '</span>' +
             (prefOn('showShop')
