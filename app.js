@@ -85,6 +85,7 @@
 
   function applyRoute() {
     const r = currentRoute();
+    syncNav(routeKey(r));            // 维护站内导航栈（供悬浮返回按钮使用）
 
     $$('.nav-item').forEach(function (b) { b.classList.toggle('active', b.dataset.view === r.view); });
     $$('.view').forEach(function (v) { v.classList.toggle('active', v.id === 'view-' + r.view); });
@@ -145,10 +146,43 @@
     positionBackFab();
   }
 
-  // 与浏览器返回键行为完全一致；若是直接打开深层链接（没有应用内历史），退回选妆容
+  /* 应用内导航栈：记录走过的页面，供悬浮返回按钮使用。
+   * 悬浮按钮绝不调用 history.back() —— 直接打开网址时那会退到浏览器主界面。
+   * 浏览器自带的返回键不受影响，仍然走 history。 */
+  const navStack = [];
+  let navCurrent = '';
+
+  function routeKey(r) { return r.view + (r.look ? '/' + r.look : ''); }
+
+  function syncNav(key) {
+    if (key === navCurrent) return;
+    if (navStack.length && navStack[navStack.length - 1] === key) {
+      navStack.pop();                       // 说明是「后退」，出栈
+    } else {
+      if (navCurrent) {
+        navStack.push(navCurrent);          // 说明是「前进」，入栈
+        if (navStack.length > 60) navStack.shift();
+      }
+    }
+    navCurrent = key;
+  }
+
+  // 回到上一级；没有站内历史就退回逻辑上的上一级，绝不退出站点
   function goBack() {
-    if (history.state && history.state.app) history.back();
-    else changeLook();
+    if (navStack.length) {
+      const top = navStack[navStack.length - 1];
+      const i = top.indexOf('/');
+      if (i > 0) go(top.slice(0, i), top.slice(i + 1));
+      else go(top);
+      return;
+    }
+    // 直接打开了深层链接（前面没有站内页面）→ 按路径退回上一层。
+    // 先把 navCurrent 改成目标，这样 syncNav 不会把当前页误当成「前进」压栈，
+    // 否则再点一次返回会又跳回来。
+    const r = currentRoute();
+    const parent = r.look ? (r.view === 'shop' ? 'shop' : 'teach') : 'teach';
+    navCurrent = parent;
+    go(parent);
   }
 
   /* ============ 选妆 ============ */
@@ -1957,13 +1991,12 @@
       if (!mq.matches) { bar.classList.remove('nav-collapsed'); return; }
       const y = window.scrollY || 0;
       const dy = y - lastY;
-      if (y < 70) {
-        bar.classList.remove('nav-collapsed');      // 靠近顶部一律展开
-      } else if (dy > 8) {
-        bar.classList.add('nav-collapsed');         // 向下滚 → 收起
-      } else if (dy < -8) {
-        bar.classList.remove('nav-collapsed');      // 向上滚 → 滑出
+      if (y <= 60) {
+        bar.classList.remove('nav-collapsed');      // 只有滚回顶部才弹出
+      } else if (dy > 6) {
+        bar.classList.add('nav-collapsed');         // 向下滚动就收起
       }
+      // 往上滚不再触发弹出 —— 否则动画太频繁，很打断阅读
       lastY = y;
     };
 
