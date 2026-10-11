@@ -128,7 +128,7 @@ html[data-theme="berry"] {
   --ring: 0 0 0 4px rgba(201, 66, 111, .16);
 }
 
-/* 蓝粉白：蓝 + 粉 + 白，主色用蓝到粉的渐变，是最有辨识度的一套 */
+/* 棉花糖：蓝 → 紫 → 粉的三段渐变，是 12 套里唯一用渐变主色的一套 */
 html[data-theme="bluepink"] {
   --primary: #6f8fe0; --primary-2: #d95f97; --primary-deep: #4a53a8;
   --primary-soft: #eaf0fd; --primary-faint: #f6f8fe;
