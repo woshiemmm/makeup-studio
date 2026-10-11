@@ -1206,6 +1206,18 @@ window.MAKEUP_DATA = {
       { cat: 'foundation', name: '阿玛尼 权力粉底液', price: '约 ¥560 / 30ml', tier: 'premium', suits: ['oily', 'combo', 'normal'],
         why: '高遮瑕又不厚重，妆感高级哑光，持妆表现好，是高端底妆里的常青款。',
         pros: ['遮瑕高', '妆感高级', '持妆好'], cons: ['价格高', '干皮需做好保湿'] },
+      { cat: 'foundation', name: '美宝莲 Fit Me 粉底液', price: '约 ¥99 / 30ml', tier: 'value', suits: ['oily', 'combo', 'normal'],
+        why: '开架粉底里的口碑王，色号多、遮瑕中等、价格低，是很多人第一支正经粉底。',
+        pros: ['便宜', '色号多', '好买'], cons: ['持妆一般', '干皮冬天偏干'] },
+      { cat: 'foundation', name: '欧莱雅 吸油棒粉底液', price: '约 ¥160 / 30ml', tier: 'mid', suits: ['oily', 'combo'],
+        why: '专为油皮设计的哑光粉底，控油持妆在中价位里表现突出，夏天很稳。',
+        pros: ['控油持妆', '哑光妆效', '中价位'], cons: ['干皮用会拔干', '妆感偏厚'] },
+      { cat: 'foundation', name: '花西子 玉容睡莲粉底液', price: '约 ¥190 / 30ml', tier: 'mid', suits: ['normal', 'dry', 'combo'],
+        why: '国货中价位粉底，偏水润奶油肌妆效，色号按亚洲肤色设计，日常很自然。',
+        pros: ['水润服帖', '色号友好', '国货好买'], cons: ['持妆中等', '遮瑕偏弱'] },
+      { cat: 'foundation', name: '卡姿兰 微光粉底液', price: '约 ¥130 / 30ml', tier: 'mid', suits: ['normal', 'combo', 'dry'],
+        why: '国货开架里表现稳定的中价位粉底，微光妆效、好推开，超市和电商都好买。',
+        pros: ['中价位', '好推开', '好买'], cons: ['持妆一般'] },
 
       /* ---- 气垫补充 ---- */
       { cat: 'cushion', name: '花西子 玉容睡莲养肤气垫', price: '约 ¥230 / 含替换装', tier: 'mid', suits: ['normal', 'combo', 'dry'],

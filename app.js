@@ -1431,18 +1431,37 @@
   }
 
   /* ============ 总预算搭配（每个品类挑一款，总价不超预算的背包问题） ============ */
-  const TIER_WEIGHT = { cheap: 0.8, value: 1, mid: 2.2, premium: 3.4 };
+  /* 档位分差要拉开：否则算法宁可把预算摊到十几个小升级上，
+   * 也不愿意把最重要的底妆从 25 块小样换成正经产品。 */
+  const TIER_WEIGHT = { cheap: 0.4, value: 1.0, mid: 3.2, premium: 6.0 };
 
-  /* 一个产品「值不值得选」的评分：档位 + 该品类内的排序 + 与肤质的契合度
-   * 低价白牌额外扣分 —— 保证它只在预算逼不得已时才会被选中。 */
+  /* 品类权重：决定「这个品类值不值得多花钱」。
+   * 没有它的话，算法会把预算砸在最容易买到高端货的品类上
+   * （比如花 150 买一块海绵，却用 25 块的粉底）。 */
+  const CAT_WEIGHT = {
+    foundation: 3.2, cushion: 3.2,        // 底妆最影响妆效
+    lip: 2.6, brow: 2.5,                  // 口红和眉毛最影响气色
+    concealer: 2.3, powder: 2.2,
+    primer: 2.0, sunscreen: 2.4,
+    eyeshadow: 1.8, blush: 1.6,
+    cleanser: 2.0, moist: 2.0, serum: 1.8, remover: 1.8,
+    eyeliner: 1.3, mascara: 1.3, setting: 1.2, toner: 1.3,
+    browgel: 1.0, eyeprimer: 1.0, lipbase: 1.0,
+    contour: 0.9, mask: 0.9,
+    brush: 0.8, tool: 0.8, lashes: 0.7, touchup: 0.7
+  };
+
+  /* 一个产品「值不值得选」的评分 = 品类权重 ×（档位 + 排序 + 肤质契合 + 风险）
+   * 低价白牌额外扣分，保证它只在预算逼不得已时才会被选中。 */
   function productScore(it, list, skinType) {
+    const cw = CAT_WEIGHT[it.cat] || 1;
     const tw = TIER_WEIGHT[it.tier] || 1;
     const idx = list.indexOf(it);
     const rank = (list.length - idx) / list.length * 0.5;   // 越靠前（口碑越好）加分
     let fit = 0;
     if (skinType) fit = fitsSkin(it, skinType) ? 0.7 : -1.5; // 不适合自己肤质的明显降权
     const risk = it.risk ? -3 : 0;                           // 有安全风险的低价白牌
-    return tw + rank + fit + risk;
+    return cw * (tw + rank + fit + risk);
   }
 
   /* 在总预算内找一套。
