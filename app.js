@@ -15,7 +15,8 @@
     recognizeFile: null,
     faceFile: null,
     lastRecognize: null,      // 最近一次识别结果，供「保存到我的妆容」使用
-    processLook: ''           // 「化妆流程」板块当前指定的妆容，空 = 标准流程
+    processLook: '',          // 「化妆流程」板块当前指定的妆容，空 = 标准流程
+    lookGroup: 'all'          // 选妆分类筛选：all / female / male / cos
   };
 
   const $ = function (sel) { return document.querySelector(sel); };
@@ -186,13 +187,45 @@
   }
 
   /* ============ 选妆 ============ */
+  const LOOK_GROUPS = [
+    { id: 'all',   name: '全部',  icon: '✨' },
+    { id: 'female', name: '日常女妆', icon: '💄' },
+    { id: 'male',  name: '男生妆容', icon: '🧔' },
+    { id: 'cos',   name: 'Cos / 舞台', icon: '🎭' }
+  ];
+
+  function lookGroup(l) { return l.group || 'female'; }
+
+  function renderLookTabs() {
+    const box = $('#look-tabs');
+    if (!box) return;
+    const cur = state.lookGroup || 'all';
+    box.innerHTML = LOOK_GROUPS.map(function (g) {
+      const n = g.id === 'all'
+        ? D.looks.length
+        : D.looks.filter(function (l) { return lookGroup(l) === g.id; }).length;
+      if (!n) return '';
+      return '<button class="look-tab' + (g.id === cur ? ' active' : '') + '" data-lookgroup="' + g.id +
+        '" type="button">' + g.icon + ' ' + g.name + '<i>' + n + '</i></button>';
+    }).join('');
+    box.querySelectorAll('[data-lookgroup]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.lookGroup = b.dataset.lookgroup;
+        renderLookTabs();
+        renderLookGrid($('#look-search') ? $('#look-search').value : '');
+      });
+    });
+  }
+
   function renderLookGrid(filter) {
     const grid = $('#look-grid');
     grid.innerHTML = '';
     const q = (filter || '').trim().toLowerCase();
+    const grp = state.lookGroup || 'all';
     const diffClass = { '入门': 'diff-easy', '进阶': 'diff-mid', '高阶': 'diff-hard' };
     let i = 0;
     D.looks.forEach(function (look) {
+      if (grp !== 'all' && lookGroup(look) !== grp) return;
       const hay = (look.name + look.en + look.tagline + look.occasion).toLowerCase();
       if (q && hay.indexOf(q) === -1) return;
       const isSel = state.currentLook === look.id;
@@ -227,7 +260,9 @@
       grid.appendChild(card);
     });
     if (!grid.children.length) {
-      grid.appendChild(el('p', 'tag', '未找到匹配的妆容，试试「烟熏」「裸妆」「约会」等关键词。'));
+      grid.appendChild(el('p', 'tag',
+        q ? '没找到匹配的妆容，试试「烟熏」「裸妆」「男」「cos」等关键词。'
+          : '这个分类下暂时没有妆容。'));
     }
   }
 
@@ -281,10 +316,7 @@
     // 该妆容的精选跟练教程（具体视频，非搜索页）
     const strip = $('#teach-tutorials');
     const lookTuts = (D.tutorials && D.tutorials[look.id]) ? D.tutorials[look.id] : [];
-    if (!lookTuts.length) {
-      strip.classList.add('hidden');
-      strip.innerHTML = '';
-    } else {
+    if (lookTuts.length) {
       strip.classList.remove('hidden');
       strip.innerHTML = '<span class="tut-strip-label">🎬 精选跟练教程</span>' +
         lookTuts.map(function (v) {
@@ -292,6 +324,17 @@
           return '<a class="tut-chip" href="https://www.bilibili.com/video/' + v.bv + '/" ' +
             'target="_blank" rel="noopener" title="' + escapeHtml(v.t) + '">▶ ' + escapeHtml(short) + '</a>';
         }).join('');
+    } else {
+      // 这款妆容还没有人工筛选的具体视频 —— 给按名字的直达搜索，不编造视频号
+      strip.classList.remove('hidden');
+      strip.innerHTML = '<span class="tut-strip-label">🎬 找这款妆容的教程</span>' +
+        '<a class="tut-chip" href="https://search.bilibili.com/all?keyword=' +
+          encodeURIComponent(look.name + ' 教程') + '" target="_blank" rel="noopener">' +
+          '▶ B 站搜「' + escapeHtml(look.name) + '」</a>' +
+        '<a class="tut-chip" href="https://www.xiaohongshu.com/search_result?keyword=' +
+          encodeURIComponent(look.name + ' 教程') + '" target="_blank" rel="noopener">' +
+          '📕 小红书图文</a>' +
+        '<span class="tut-strip-note">这款还没有人工筛选的视频，先给你直达搜索</span>';
     }
 
     // 阶段标签
@@ -413,6 +456,22 @@
   /* ============ 化妆辅助：眼型 / 脸型 / 参考线 / 自检清单 ============ */
   function currentPrefs() { return S.getPrefs(); }
 
+  /* ============ 界面主题 ============ */
+  function applyTheme(id) {
+    const t = (id || 'rose');
+    const root = document.documentElement;
+    // rose 就是 :root 里的默认值，不用加属性
+    if (t === 'rose') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', t);
+  }
+
+  function setTheme(id) {
+    S.setPrefs({ theme: id });
+    applyTheme(id);
+    const t = (D.themes || []).find(function (x) { return x.id === id; });
+    flashPers('已切换到「' + ((t && t.name) || id) + '」主题');
+  }
+
   /* 判断某个开关当前是否开启（grid/checklist 默认关，showShop/guide 默认开） */
   function prefOn(k) {
     const v = currentPrefs()[k];
@@ -472,7 +531,28 @@
       '</label>';
     };
 
+    /* 主题色卡 */
+    const themeGrid = function () {
+      const cur = currentPrefs().theme || 'rose';
+      return '<div class="pers-group">' +
+        '<div class="pers-head"><b>🎨 界面主题</b><small>换一套配色，立刻生效，设置存在当前账号</small></div>' +
+        '<div class="theme-grid">' +
+          (D.themes || []).map(function (t) {
+            return '<button class="theme-swatch' + (t.id === cur ? ' active' : '') + '" data-theme="' + t.id +
+              '" type="button" title="' + escapeHtml(t.desc || '') + '">' +
+              '<span class="ts-dots">' +
+                t.colors.map(function (c) { return '<i style="background:' + c + '"></i>'; }).join('') +
+              '</span>' +
+              '<span class="ts-name">' + escapeHtml(t.name) + '</span>' +
+              '<span class="ts-check">' + (t.id === cur ? '✓ 使用中' : '') + '</span>' +
+            '</button>';
+          }).join('') +
+        '</div>' +
+      '</div>';
+    };
+
     body.innerHTML =
+      themeGrid() +
       chipRow('👁 我的眼型', '眼妆步骤会给出针对这个眼型的调整', D.eyeShapes || [], 'eye', currentPrefs().eye, true) +
       chipRow('😊 我的脸型', '腮红修容步骤会给出针对这个脸型的调整', D.faceShapes || [], 'face', currentPrefs().face, true) +
       chipRow('💰 预算档位', '决定购物清单里搜索关键词的价位倾向', tiers, 'tier', defaultTier, false) +
@@ -522,6 +602,14 @@
         '<button class="btn ghost" id="btn-reset-pers" type="button">↺ 重置个性化</button>' +
         '<span class="hint" id="pers-status"></span>' +
       '</div>';
+
+    // 主题色卡
+    body.querySelectorAll('[data-theme]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        setTheme(b.dataset.theme);
+        renderPersonalize();
+      });
+    });
 
     body.querySelectorAll('[data-pers]').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -2661,10 +2749,8 @@
     // 只保留用户自己上传的实拍图；程序生成的「妆前 / 妆后」插画已移除
     const afterPhoto = realPhoto || '';
 
-    // 该妆容的精选视频教程；没有的话退回通用入门教程
-    const tuts = (D.tutorials && lookId && D.tutorials[lookId] && D.tutorials[lookId].length)
-      ? D.tutorials[lookId]
-      : (D.generalTutorials || []);
+    // 该妆容的精选视频教程。没有的话不硬塞通用视频，改为按名字直达搜索
+    const curated = (D.tutorials && lookId && D.tutorials[lookId]) ? D.tutorials[lookId] : [];
 
     const kwCn = encodeURIComponent(name + ' 妆前 妆后 对比');
     const kwTut = encodeURIComponent(name + ' 化妆教程');
@@ -2700,11 +2786,11 @@
             '</div>'
           : '') +
 
-        (tuts.length
+        (curated.length
           ? '<h4 class="gallery-title">🎬 精选跟练教程</h4>' +
             '<p class="preview-note" style="margin-top:0">下面都是<b>筛好的具体视频</b>（不是搜索页）。' +
             '点标题去 B 站看，或点「本页试播」直接在弹窗里播放。</p>' +
-            '<div class="tut-list">' + tuts.map(function (v) {
+            '<div class="tut-list">' + curated.map(function (v) {
               return '<div class="tut-card">' +
                 '<a class="tut-main" href="https://www.bilibili.com/video/' + v.bv + '/" target="_blank" rel="noopener">' +
                   '<span class="tut-play">▶</span>' +
@@ -2715,7 +2801,18 @@
               '</div>';
             }).join('') + '</div>' +
             '<div class="tut-player hidden" id="tut-player"></div>'
-          : '') +
+          : '<h4 class="gallery-title">🎬 找这款妆容的教程</h4>' +
+            '<p class="preview-note" style="margin-top:0">这款妆容暂时<b>没有人工筛选过的具体视频</b>' +
+            '（我们不会随便塞一个不相关的视频号给你）。下面按妆容名直达搜索，' +
+            '里面有大量真实跟练视频。</p>' +
+            '<div class="gallery-links">' +
+              '<a href="https://search.bilibili.com/all?keyword=' + encodeURIComponent(name + ' 教程') +
+                '" target="_blank" rel="noopener">B站搜「' + escapeHtml(name) + '」</a>' +
+              '<a href="https://www.xiaohongshu.com/search_result?keyword=' + encodeURIComponent(name + ' 教程') +
+                '" target="_blank" rel="noopener">小红书图文</a>' +
+              '<a href="https://www.douyin.com/search/' + encodeURIComponent(name + ' 教程') +
+                '" target="_blank" rel="noopener">抖音视频</a>' +
+            '</div>') +
 
         '<h4 class="gallery-title">🔎 还想找更多参考？</h4>' +
         '<div class="gallery-links">' +
@@ -3252,6 +3349,9 @@
 
   /* ============ 初始化 ============ */
   function init() {
+    // 界面主题（要尽早，避免闪一下默认色）
+    applyTheme(currentPrefs().theme);
+
     // 导航
     $$('.nav-item').forEach(function (b) {
       b.addEventListener('click', function () { switchView(b.dataset.view); });
@@ -3262,6 +3362,7 @@
     if (shopBack) shopBack.addEventListener('click', function () { go('shop'); });
 
     // 选妆
+    renderLookTabs();
     renderLookGrid('');
     $('#look-search').addEventListener('input', function () { renderLookGrid(this.value); });
 

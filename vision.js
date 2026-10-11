@@ -742,6 +742,58 @@ window.VISION = (function () {
       skin: { oily: 2, dry: 1, combo: 2, normal: 3, sensitive: 1 },
       good: { darkCircle: 1 },
       bad: { redness: 3 }
+    },
+
+    /* ---- 男妆 ---- */
+    mens_base: {
+      name: '男生清透底妆', note: '只匀肤色、遮瑕疵，妆感最轻，任何肤质都能上手',
+      undertone: { cool: 3, warm: 3, neutral: 3 },
+      depth: { fair: 2, light: 3, medium: 3, deep: 3 },
+      skin: { oily: 3, dry: 2, combo: 3, normal: 3, sensitive: 3 },
+      good: { acne: 3, redness: 3, darkCircle: 2, dull: 2, pore: 2 },
+      bad: {}
+    },
+    mens_bone: {
+      name: '男生立体骨相妆', note: '靠修容塑形，油皮友好；干皮需先做好保湿否则会显脏',
+      undertone: { cool: 3, warm: 2, neutral: 3 },
+      depth: { fair: 1, light: 2, medium: 3, deep: 3 },
+      skin: { oily: 3, dry: 1, combo: 3, normal: 3, sensitive: 1 },
+      good: { dull: 2, pore: 2 },
+      bad: { fineLine: 2, redness: 2 }
+    },
+    mens_eye: {
+      name: '男生眉眼精神妆', note: '只做眉毛与眼周，不碰底妆，最省事',
+      undertone: { cool: 3, warm: 3, neutral: 3 },
+      depth: { fair: 2, light: 3, medium: 3, deep: 3 },
+      skin: { oily: 3, dry: 3, combo: 3, normal: 3, sensitive: 3 },
+      good: { darkCircle: 3, dull: 2, fineLine: 1 },
+      bad: {}
+    },
+
+    /* ---- cos 妆 ---- */
+    cos_anime: {
+      name: '二次元动漫妆', note: '高遮瑕、强眼妆，对油皮和毛孔友好，但敏感肌要慎用闪片',
+      undertone: { cool: 3, warm: 2, neutral: 2 },
+      depth: { fair: 3, light: 3, medium: 2, deep: 1 },
+      skin: { oily: 3, dry: 2, combo: 3, normal: 3, sensitive: 1 },
+      good: { acne: 3, pore: 3, darkCircle: 3, dull: 2, redness: 2 },
+      bad: { fineLine: 2 }
+    },
+    cos_guofeng: {
+      name: '古风 cos 妆', note: '瓷白底妆与胭脂红腮红，对泛红肌和深肤色不太友好',
+      undertone: { cool: 2, warm: 3, neutral: 3 },
+      depth: { fair: 3, light: 3, medium: 2, deep: 1 },
+      skin: { oily: 2, dry: 1, combo: 2, normal: 3, sensitive: 1 },
+      good: { darkCircle: 1 },
+      bad: { redness: 3, acne: 1 }
+    },
+    cos_idol: {
+      name: '舞台爱豆妆', note: '为舞台灯设计，显色与闪片拉满；日常会偏浓',
+      undertone: { cool: 3, warm: 3, neutral: 3 },
+      depth: { fair: 2, light: 3, medium: 3, deep: 3 },
+      skin: { oily: 3, dry: 1, combo: 3, normal: 3, sensitive: 1 },
+      good: { acne: 3, darkCircle: 3, dull: 3, pore: 2 },
+      bad: { fineLine: 2, redness: 2 }
     }
   };
 

@@ -28,6 +28,19 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="apple-touch-icon" href="favicon.svg" />
 <link rel="stylesheet" href="styles.css" />
+<script>
+/* 尽早套用上次选的主题，避免刷新时先闪一下默认配色。
+   app.js 加载后还会再套一次（那里是权威来源）。 */
+(function () {
+  try {
+    var accs = JSON.parse(localStorage.getItem('makeup_accounts_v1') || 'null');
+    if (!accs || !accs.currentId) return;
+    var ud = JSON.parse(localStorage.getItem('makeup_userdata_v1_' + accs.currentId) || 'null');
+    var t = ud && ud.prefs && ud.prefs.theme;
+    if (t && t !== 'rose') document.documentElement.setAttribute('data-theme', t);
+  } catch (e) { /* 存储不可用时忽略 */ }
+})();
+</script>
 
 <script type="application/ld+json">
 {
@@ -134,6 +147,7 @@
           <h3>1 · 选择妆容</h3>
           <input type="text" id="look-search" class="input search" placeholder="输入想画的妆容，如：烟熏妆、裸妆、约会妆…" />
         </div>
+        <div class="look-tabs" id="look-tabs"></div>
         <div class="look-grid" id="look-grid"></div>
       </div>
 
