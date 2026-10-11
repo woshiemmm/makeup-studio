@@ -128,18 +128,21 @@ html[data-theme="berry"] {
   --ring: 0 0 0 4px rgba(201, 66, 111, .16);
 }
 
-/* 棉花糖：蓝 → 紫 → 粉的三段渐变，是 12 套里唯一用渐变主色的一套 */
+/* 棉花糖：只用蓝、粉、白三个颜色。
+ * 渐变做成「左半蓝 + 右半粉」的硬分界 —— 蓝和粉只要慢慢混，
+ * 中点必然混出一片紫（#9b80bc 那种），那就等于多了第四种颜色。
+ * 白色不放进渐变里（会把按钮中间冲淡、白字看不见），而是作为整站底色。 */
 html[data-theme="bluepink"] {
-  --primary: #6f8fe0; --primary-2: #d95f97; --primary-deep: #4a53a8;
-  --primary-soft: #eaf0fd; --primary-faint: #f6f8fe;
-  --primary-grad: linear-gradient(135deg, #6f8fe0 0%, #a578e0 48%, #ec6f9f 100%);
-  --gold: #d98ab8; --gold-soft: #fdf0f6;
-  --bg: #fdfcff; --bg-grad-1: #eff4fe; --bg-grad-2: #fdeef6;
-  --line: #e7ecfa; --line-strong: #d3dbf4;
-  --shadow-sm: 0 2px 8px rgba(111, 143, 224, .08);
-  --shadow-md: 0 10px 30px rgba(111, 143, 224, .13);
-  --shadow-lg: 0 18px 50px rgba(111, 143, 224, .20);
-  --ring: 0 0 0 4px rgba(111, 143, 224, .20);
+  --primary: #4a90d9; --primary-2: #ec6f9f; --primary-deep: #2f6cb5;
+  --primary-soft: #eef5fd; --primary-faint: #f8fbff;
+  --primary-grad: linear-gradient(135deg, #4a90d9 0%, #4a90d9 50%, #ec6f9f 50%, #ec6f9f 100%);
+  --gold: #f2a0be; --gold-soft: #fdf1f6;
+  --bg: #ffffff; --bg-grad-1: #ffffff; --bg-grad-2: #f3f8fe;
+  --line: #e8eff9; --line-strong: #d4e2f2;
+  --shadow-sm: 0 2px 8px rgba(74, 144, 217, .08);
+  --shadow-md: 0 10px 30px rgba(74, 144, 217, .13);
+  --shadow-lg: 0 18px 50px rgba(74, 144, 217, .20);
+  --ring: 0 0 0 4px rgba(74, 144, 217, .20);
 }
 html[data-theme="mint"] {
   --primary: #35b3a4; --primary-2: #1f9184; --primary-deep: #14705f;
@@ -184,7 +187,7 @@ html[data-theme="matcha"] { --primary-rgb: 79, 168, 122; --gold-rgb: 133, 196, 1
 html[data-theme="peach"] { --primary-rgb: 240, 138, 93; --gold-rgb: 242, 177, 131; }
 html[data-theme="cocoa"] { --primary-rgb: 176, 130, 104; --gold-rgb: 208, 169, 141; }
 html[data-theme="ink"] { --primary-rgb: 91, 91, 102; --gold-rgb: 168, 150, 122; }
-html[data-theme="bluepink"] { --primary-rgb: 111, 143, 224; --gold-rgb: 217, 138, 184; }
+html[data-theme="bluepink"] { --primary-rgb: 74, 144, 217; --gold-rgb: 242, 160, 190; }
 html[data-theme="mint"] { --primary-rgb: 53, 179, 164; --gold-rgb: 126, 207, 196; }
 html[data-theme="coral"] { --primary-rgb: 242, 115, 107; --gold-rgb: 245, 169, 143; }
 html[data-theme="galaxy"] { --primary-rgb: 106, 95, 214; --gold-rgb: 179, 154, 224; }
