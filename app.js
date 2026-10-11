@@ -613,8 +613,7 @@
               '<span class="ts-dots">' +
                 t.colors.map(function (c) { return '<i style="background:' + c + '"></i>'; }).join('') +
               '</span>' +
-              '<span class="ts-name">' + escapeHtml(t.name) +
-                (t.hot ? '<em class="ts-hot">推荐</em>' : '') + '</span>' +
+              '<span class="ts-name">' + escapeHtml(t.name) + '</span>' +
               '<span class="ts-check">' + (t.id === cur ? '✓ 使用中' : '') + '</span>' +
             '</button>';
           }).join('') +
