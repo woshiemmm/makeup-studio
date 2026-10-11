@@ -365,6 +365,12 @@ window.MAKEUP_DATA = {
   /* ============ 总预算套餐（从每个品类挑一款凑成一套） ============ */
   makeupSet: {
     tolerance: 50,
+    minBudget: 100,          // 低于这个金额直接告诉用户做不到
+    /* 预算买不齐全套时，按这个顺序优先买（越靠前越不可省） */
+    priority: ['foundation', 'brow', 'lip', 'tool', 'concealer', 'powder',
+               'eyeshadow', 'eyeliner', 'mascara', 'blush', 'primer', 'setting',
+               'contour', 'brush',
+               'cleanser', 'moist', 'sunscreen', 'toner', 'serum', 'remover', 'mask'],
     presets: [
       {
         id: 'makeup', name: '彩妆全套',

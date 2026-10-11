@@ -1442,10 +1442,12 @@
   }
 
   /* 在总预算内找一套。
-   * 两阶段：
-   *   ① 先严格要求「总价 ≤ 预算」，在预算内挑尽量好的；
-   *   ② 只有预算确实装不下完整一套时，才放宽到「预算 + 容差」，
-   *      并且这一阶段改为「优先最省」，避免把容差也花满。
+   * 三阶段：
+   *   ① 全套能装下 → 在预算内挑尽量好的；
+   *   ② 全套装不下 → 按品类重要性逐件砍，先凑出「现在买得起的那几件」，
+   *      并告知还差哪些、补齐全套还要多少；
+   *   ③ 连一件都买不起且低于最低预算 → 交给界面提示做不到。
+   * 说明：只有「预算 + 容差」都装不下时才会进入第 ② 步；且第 ② 步一律优先最省。
    */
   function solveBudgetSet(catIds, budget, tolerance, skinType) {
     const all = (D.makeupProducts ? D.makeupProducts.items : [])
@@ -1458,17 +1460,27 @@
     });
     if (!groups.length) return { error: '没有可用的产品数据' };
 
-    const minTotal = groups.reduce(function (a, g) {
-      return a + Math.min.apply(null, g.list.map(priceNum));
-    }, 0);
+    const cheapest = function (g) { return Math.min.apply(null, g.list.map(priceNum)); };
+    const sumCheapest = function (gs) {
+      return gs.reduce(function (a, g) { return a + cheapest(g); }, 0);
+    };
+
+    /* 按重要性排序：没在 priority 里的排最后，保持原顺序 */
+    const pri = (D.makeupSet && D.makeupSet.priority) || [];
+    const ordered = groups.slice().sort(function (a, b) {
+      const ia = pri.indexOf(a.id), ib = pri.indexOf(b.id);
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+    });
+
+    const minTotal = sumCheapest(ordered);
 
     /* 给定上限求解：DP 层数 = 品类数，状态 = 已花金额 */
-    const solveCap = function (cap) {
+    const solveCap = function (gs, cap) {
       let dp = new Map();
       dp.set(0, { score: 0, item: null, from: null });
       const layers = [dp];
 
-      groups.forEach(function (g) {
+      gs.forEach(function (g) {
         const next = new Map();
         g.list.forEach(function (it) {
           const p = priceNum(it);
@@ -1489,13 +1501,13 @@
       const rebuild = function (spent) {
         const picks = [];
         let s = spent;
-        for (let i = groups.length; i >= 1; i--) {
+        for (let i = gs.length; i >= 1; i--) {
           const node = layers[i].get(s);
           if (!node || !node.item) return null;
           picks.unshift(node.item);
           s = node.from;
         }
-        return picks.length === groups.length ? picks : null;
+        return picks.length === gs.length ? picks : null;
       };
 
       const out = [];
@@ -1506,32 +1518,84 @@
       return out;
     };
 
-    /* ① 严格在预算内 —— 分数高的优先，同分更省的优先 */
-    let sols = solveCap(budget);
-    let capped = budget;
-    let relaxed = false;
+    const dedupe = function (sols, minSpendFirst) {
+      sols.sort(minSpendFirst
+        ? function (a, b) { return (a.spent - b.spent) || (b.score - a.score); }
+        : function (a, b) { return (b.score - a.score) || (a.spent - b.spent); });
+      const list = [], seen = {};
+      for (let i = 0; i < sols.length && list.length < 6; i++) {
+        const key = sols[i].picks.map(function (x) { return x.name; }).join('|');
+        if (seen[key]) continue;
+        seen[key] = 1;
+        list.push(sols[i]);
+      }
+      return list;
+    };
+
+    /* ① 全套在预算内 */
+    let use = ordered, dropped = [], relaxed = false, capped = budget;
+    let sols = solveCap(ordered, budget);
 
     if (!sols.length) {
-      /* ② 预算装不下 → 放宽到容差，并且优先最省（避免把容差也花满） */
-      capped = budget + tolerance;
-      sols = solveCap(capped);
-      relaxed = true;
+      /* 全套在「预算 + 容差」内？ */
+      sols = solveCap(ordered, budget + tolerance);
+      if (sols.length) {
+        relaxed = true;
+        capped = budget + tolerance;
+      }
     }
-    if (!sols.length) return { impossible: true, minTotal: minTotal, cap: budget + tolerance };
 
-    sols.sort(relaxed
-      ? function (a, b) { return (a.spent - b.spent) || (b.score - a.score); }
-      : function (a, b) { return (b.score - a.score) || (a.spent - b.spent); });
-
-    // 去重，最多留 6 套供「换一套」
-    const list = [], seen = {};
-    for (let i = 0; i < sols.length && list.length < 6; i++) {
-      const key = sols[i].picks.map(function (x) { return x.name; }).join('|');
-      if (seen[key]) continue;
-      seen[key] = 1;
-      list.push(sols[i]);
+    if (sols.length) {
+      return {
+        solutions: dedupe(sols, relaxed),
+        minTotal: minTotal, cap: capped, relaxed: relaxed, budget: budget,
+        reduced: false, dropped: [], usedCount: ordered.length, fullCount: ordered.length
+      };
     }
-    return { solutions: list, minTotal: minTotal, cap: capped, relaxed: relaxed, budget: budget };
+
+    /* ② 全套实在装不下 → 按重要性砍到装得下为止（一律用预算，不放容差） */
+    use = [];
+    let acc = 0;
+    for (let i = 0; i < ordered.length; i++) {
+      const c = cheapest(ordered[i]);
+      if (acc + c > budget) break;
+      acc += c;
+      use.push(ordered[i]);
+    }
+    /* 连最便宜的一件都超预算 → 退化成「就买最便宜的那一件」 */
+    if (!use.length) {
+      const flat = [];
+      ordered.forEach(function (g) {
+        g.list.forEach(function (it) { flat.push({ g: g, it: it, p: priceNum(it) }); });
+      });
+      flat.sort(function (a, b) { return a.p - b.p; });
+      const pick = flat[0];
+      if (pick && pick.p <= budget + tolerance) {
+        use = [pick.g];
+      }
+    }
+    dropped = ordered.filter(function (g) { return use.indexOf(g) < 0; });
+
+    if (!use.length) {
+      return { impossible: true, minTotal: minTotal, cap: budget + tolerance,
+               fullCount: ordered.length };
+    }
+
+    sols = solveCap(use, budget);
+    if (!sols.length) sols = solveCap(use, budget + tolerance);
+    if (!sols.length) {
+      return { impossible: true, minTotal: minTotal, cap: budget + tolerance,
+               fullCount: ordered.length };
+    }
+
+    return {
+      solutions: dedupe(sols, true),
+      minTotal: minTotal, cap: budget, relaxed: false, budget: budget,
+      reduced: true,
+      dropped: dropped.map(function (g) { return { cat: g.id, min: cheapest(g) }; }),
+      restCost: sumCheapest(dropped),
+      usedCount: use.length, fullCount: ordered.length
+    };
   }
 
   let budgetPick = 0;                             // 「换一套」当前显示第几套
@@ -1588,6 +1652,35 @@
 
     /* ---- 已设预算 → 求解并展示 ---- */
     const skinType = currentSkinType();
+
+    /* 低于最低预算：直接告诉用户做不到 */
+    const minB = (D.makeupSet && D.makeupSet.minBudget) || 100;
+    if (budget < minB) {
+      card.innerHTML =
+        '<div class="card-title"><h3>🎯 总预算搭配</h3>' +
+          '<button class="btn ghost" id="btn-budget-reset" type="button">重新设置</button></div>' +
+        '<div class="warn-box"><h5>⚠️ ¥' + budget + ' 做不到</h5>' +
+          '<p>这个金额低于最低预算 <b>¥' + minB + '</b>，连一件正经的底妆或口红都买不到，' +
+          '凑不出能用的方案。</p>' +
+          '<p>建议：预算至少给到 <b>¥' + minB + '</b> 以上；' +
+          '如果预算确实只有几十块，可以先买一支<b>眉笔或口红</b>练手，不必凑套装。</p></div>' +
+        '<div class="budget-form">' +
+          '<label class="field"><span>调整总预算（元）</span>' +
+            '<input type="number" id="budget-total" class="input" min="' + minB + '" step="50" value="' + budget + '" /></label>' +
+          '<button class="btn primary" id="btn-budget-go" type="button">重新生成</button>' +
+        '</div>';
+      bindBudgetReset();
+      $('#btn-budget-go').addEventListener('click', function () {
+        const v = Number(($('#budget-total').value || '').trim());
+        if (!v || v < minB) { toast('请输入一个不小于 ¥' + minB + ' 的金额', { type: 'warn' }); return; }
+        S.setPrefs({ budgetTotal: v, tier: 'total' });
+        budgetPick = 0;
+        renderBudgetCard();
+        renderPersonalize();
+      });
+      return;
+    }
+
     const res = solveBudgetSet(preset.cats, budget, tol, skinType);
 
     if (res.impossible) {
@@ -1629,7 +1722,7 @@
           '<span class="bs-of"> / 预算 ¥' + budget + '</span>' +
         '</div>' +
         '<div class="bs-sub">' +
-          escapeHtml(preset.name) + ' · ' + preset.cats.length + ' 件 · ' +
+          (res.reduced ? '起步套装 · ' : escapeHtml(preset.name) + ' · ') + sol.picks.length + ' 件 · ' +
           (res.relaxed
             ? '<span class="bs-over">预算装不下完整一套，这是最省的一套（超 ¥' + over + '，在允许的 ' + tol + ' 元内）</span>'
             : (over > 0
@@ -1640,6 +1733,15 @@
           ? '<button class="btn ghost" id="btn-budget-again" type="button">换一套（' + (budgetPick + 1) + '/' + sols.length + '）</button>'
           : '') +
       '</div>' +
+
+      /* 预算不足：说明这是一份「先买这些」的起步清单 */
+      (res.reduced
+        ? '<div class="warn-box"><h5>📌 预算暂时买不齐全套（' + res.usedCount + ' / ' + res.fullCount + ' 件）</h5>' +
+            '<p>已经按<b>重要性</b>把最不能省的几件挑出来了 —— 有这些就能开始画。</p>' +
+            '<p>把剩下的 <b>' + res.dropped.length + '</b> 件补齐，还需要约 <b>¥' + res.restCost + '</b>，' +
+            '也就是说全套大约 <b>¥' + (sol.spent + res.restCost) + '</b> 起。</p></div>'
+        : '') +
+
       '<div class="budget-list">' +
         sol.picks.map(function (it) {
           const cat = ((D.makeupProducts || {}).categories || [])
@@ -1656,6 +1758,29 @@
           '</div>';
         }).join('') +
       '</div>' +
+
+      /* 还没买的：按建议顺序列出来，并给出各自最低价 */
+      (res.reduced && res.dropped.length
+        ? (function () {
+            const catOf = function (id) {
+              return ((D.makeupProducts || {}).categories || [])
+                .concat((D.skinProducts || {}).categories || [])
+                .find(function (c) { return c.id === id; }) || { icon: '•', name: id };
+            };
+            return '<div class="budget-next">' +
+              '<h5>🗒️ 还没买的（按建议顺序，预算够了再加）</h5>' +
+              '<div class="bn-list">' +
+                res.dropped.map(function (d) {
+                  const c = catOf(d.cat);
+                  return '<span class="bn-item"><b>' + c.icon + '</b> ' + escapeHtml(c.name) +
+                    '<i>最低 ¥' + d.min + '</i></span>';
+                }).join('') +
+              '</div>' +
+              '<p class="hint">这些加起来约 ¥' + res.restCost + '。先把当前这几件用熟，比一次买齐更不容易闲置。</p>' +
+              '</div>';
+          })()
+        : '') +
+
       '<p class="hint">' +
         (skinType ? '已按你的肤质「' + (SKIN_TYPE_NAME[skinType] || '') + '」加权。' : '做过肤质分析后会按你的肤质加权。') +
         '同价位下优先选口碑更好的；单品价格以平台实际为准。</p>';
