@@ -340,6 +340,74 @@ html[data-style="glass"] .look-card:hover { background: rgba(255, 255, 255, .72)
 }
 .look-tab.active i { background: rgba(255, 255, 255, .26); color: #fff; }
 
+/* 场合筛选（第二行，可多选） */
+.look-scenes { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; margin: -6px 0 15px; }
+.ls-label { font-size: 11.5px; font-weight: 800; color: var(--ink-faint); margin-right: 2px; }
+.ls-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border-radius: 15px;
+  border: 1.5px dashed var(--line-strong); background: transparent;
+  font-family: var(--font); font-size: 12.5px; font-weight: 700; color: var(--ink-soft);
+  cursor: pointer; transition: all .16s var(--ease);
+}
+.ls-chip:hover { border-color: var(--primary); color: var(--primary-2); border-style: solid; }
+.ls-chip.active {
+  background: var(--primary-soft); border-color: var(--primary);
+  border-style: solid; color: var(--primary-2);
+}
+.ls-chip i {
+  font-style: normal; font-size: 10.5px; font-weight: 800;
+  padding: 1px 6px; border-radius: 8px; background: rgba(var(--primary-rgb), .10); color: var(--primary-2);
+}
+.ls-chip.active i { background: var(--primary); color: #fff; }
+.ls-clear {
+  padding: 5px 11px; border-radius: 15px; border: none;
+  background: transparent; color: var(--ink-faint);
+  font-family: var(--font); font-size: 12px; font-weight: 700;
+  cursor: pointer; text-decoration: underline;
+}
+.ls-clear:hover { color: var(--danger); }
+
+/* 妆容卡上的适合人群 / 场合标签 */
+.look-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 9px; }
+.lt-aud, .lt-scene {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700;
+}
+.lt-scene { background: var(--primary-faint); color: var(--ink-soft); }
+.lt-aud.lt-f   { background: #fde7ef; color: #b8446e; }
+.lt-aud.lt-m   { background: #e6effa; color: #3a6ea5; }
+.lt-aud.lt-any { background: #efeaf8; color: #6b53a8; }
+
+/* 识别结果的候选排名 */
+.rank-list { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; }
+.rank-item {
+  display: grid; grid-template-columns: 22px 1fr 90px 34px;
+  align-items: center; gap: 10px;
+  padding: 9px 13px; border-radius: var(--radius-xs);
+  border: 1.5px solid var(--line); background: #fff;
+  font-family: var(--font); cursor: pointer; text-align: left;
+  transition: all .16s var(--ease);
+}
+.rank-item:hover { border-color: var(--primary); transform: translateX(3px); }
+.rank-item.top { border-color: var(--primary); background: var(--primary-faint); }
+.rk-no {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 11.5px; font-weight: 800;
+  background: var(--primary-soft); color: var(--primary-2);
+}
+.rank-item.top .rk-no { background: var(--primary); color: #fff; }
+.rk-name { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ink); }
+.rk-name .lt-aud { padding: 1px 7px; font-size: 10px; }
+.rk-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.rk-bar i { display: block; height: 100%; border-radius: 3px; background: var(--primary-grad); }
+.rk-score { font-size: 12px; font-weight: 800; color: var(--primary-2); text-align: right; }
+@media (max-width: 560px) {
+  .rank-item { grid-template-columns: 22px 1fr 40px; }
+  .rk-bar { display: none; }
+}
+
 /* 无精选视频时的说明 */
 .tut-strip-note { font-size: 11.5px; color: var(--ink-faint); align-self: center; }
 

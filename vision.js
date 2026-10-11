@@ -192,35 +192,162 @@ window.VISION = (function () {
   }
 
   /* ============ 颜色 → 妆容匹配（演示模式） ============ */
+  /* ============ 颜色 → 妆容匹配 ============
+   * 这里不写死分数表 —— 每个妆容的特征直接由它自己的调色板推导出来。
+   * 好处：新增妆容（男妆 / cos 妆 / 以后再加的）会自动进入识别范围，
+   *       不会出现「识别永远认不出某几类」的问题。
+   */
+
+  function hexHSV(hex) {
+    let h = String(hex || '#888888').replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    const r = parseInt(h.slice(0, 2), 16) / 255 || 0;
+    const g = parseInt(h.slice(2, 4), 16) / 255 || 0;
+    const b = parseInt(h.slice(4, 6), 16) / 255 || 0;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let hue = 0;
+    if (d !== 0) {
+      if (mx === r) hue = ((g - b) / d) % 6;
+      else if (mx === g) hue = (b - r) / d + 2;
+      else hue = (r - g) / d + 4;
+      hue *= 60; if (hue < 0) hue += 360;
+    }
+    return { h: hue, s: mx === 0 ? 0 : d / mx, v: mx };
+  }
+
+  /* 分桶规则必须和 analyzeColors 完全一致，否则两边对不上 */
+  function bucketOfRGB(pr, pg, pb) {
+    const lum = (pr + pg + pb) / 3;
+    if (lum < 50) return 'dark';
+    const rn = pr / 255, gn = pg / 255, bn = pb / 255;
+    const mx = Math.max(rn, gn, bn), mn = Math.min(rn, gn, bn), d = mx - mn;
+    const s = mx === 0 ? 0 : d / mx;
+    if (s < 0.14) return 'neutral';
+    let h = 0;
+    if (d !== 0) {
+      if (mx === rn) h = ((gn - bn) / d) % 6;
+      else if (mx === gn) h = (bn - rn) / d + 2;
+      else h = (rn - gn) / d + 4;
+      h *= 60; if (h < 0) h += 360;
+    }
+    if (h < 15 || h >= 345) return 'red';
+    if (h < 45) return 'orange';
+    if (h < 70) return 'yellow';
+    if (h < 165) return 'green';
+    if (h < 250) return 'blue';
+    if (h < 300) return 'purple';
+    if (h < 345) return 'pink';
+    return 'neutral';
+  }
+
+  /* 妆容签名：调色板各色落在哪些桶 + 整体明度 / 饱和度 */
+  const _sigCache = {};
+  function lookSignature(look) {
+    if (_sigCache[look.id]) return _sigCache[look.id];
+    const w = {};
+    let lum = 0, sat = 0;
+    const pal = look.palette || [];
+    pal.forEach(function (c) {
+      const hsv = hexHSV(c);
+      const rgb = hexToRgb(c);
+      w[bucketOfRGB(rgb.r, rgb.g, rgb.b)] = (w[bucketOfRGB(rgb.r, rgb.g, rgb.b)] || 0) + 1;
+      lum += (rgb.r + rgb.g + rgb.b) / 3;
+      sat += hsv.s;
+    });
+    const n = Math.max(1, pal.length);
+    const sig = { w: w, lum: lum / n, sat: sat / n, sig: look.palette && look.palette[0] };
+    _sigCache[look.id] = sig;
+    return sig;
+  }
+
+  /* 有些妆容调色板天然接近（比如各种粉调），靠一点点显式微调拉开差距。
+   * lum: 期望明度偏移（正=更亮）；sat: 期望饱和度偏移；bias: 直接加减分。 */
+  const RECO_NUDGE = {
+    natural:   { lum: 10, sat: -0.05, bias: 4 },   // 裸妆：最亮最淡
+    daily:     { lum: 2, bias: 2 },
+    sweet:     { sat: 0.05, bias: 3 },             // 粉调最饱和的甜妆
+    korean:    { lum: 14, sat: -0.02, bias: 3 },   // 水光妆：最亮
+    japanese:  { lum: 8, bias: 2 },
+    western:   { lum: -8, sat: 0.03, bias: 2 },
+    smokey:    { lum: -30, sat: 0.02, bias: 6 },   // 烟熏：暗色权重加成
+    chinese:   { sat: 0.06, bias: 3 },             // 正红
+    mens_base: { lum: 6, sat: -0.08, bias: 3 },    // 男妆整体低饱和
+    mens_bone: { lum: -4, sat: -0.04, bias: 2 },
+    mens_eye:  { lum: 4, sat: -0.06, bias: 2 },
+    cos_anime: { sat: 0.08, bias: 4 },             // 二次元：高饱和
+    cos_guofeng: { sat: 0.03, bias: 2 },
+    cos_idol:  { sat: 0.10, bias: 4 },             // 舞台：饱和度最高
+    cos_shonen: { lum: 8, sat: -0.07, bias: 3 },   // 少年感：接近男妆但更干净
+    cos_dark:  { lum: -34, sat: -0.02, bias: 7 }   // 暗黑：最暗
+  };
+
   function matchLookByColor(analysis) {
     if (!analysis) return null;
+    const looks = (typeof window !== 'undefined' && window.MAKEUP_DATA && window.MAKEUP_DATA.looks) || [];
+    if (!looks.length) return null;
+
     const b = analysis.buckets;
-    const bright = analysis.brightness;
-    const dark = b.dark;
-    const total = Math.max(1, Object.values(b).reduce(function (a, x) { return a + x; }, 0));
-    const darkRatio = dark / total;
-    const pinkRatio = b.pink / total, redRatio = b.red / total, orangeRatio = b.orange / total;
-    const neutralRatio = b.neutral / total;
+    const total = Math.max(1, Object.keys(b).reduce(function (a, k) { return a + b[k]; }, 0));
+    const ratio = function (k) { return (b[k] || 0) / total; };
+    const imgLum = (analysis.avg.r + analysis.avg.g + analysis.avg.b) / 3;
 
-    const scores = {
-      smokey: darkRatio * 100 + (analysis.avgSat < 0.3 ? 30 : 0),
-      western: (b.orange + b.yellow) / total * 70 + (darkRatio * 20) + (analysis.warmRatio * 20),
-      chinese: redRatio * 90 + (analysis.avgSat > 0.4 ? 25 : 0),
-      sweet: pinkRatio * 90 + redRatio * 40 + (bright > 160 ? 15 : 0),
-      japanese: orangeRatio * 85 + b.yellow / total * 30 + (bright > 150 ? 15 : 0),
-      korean: pinkRatio * 50 + neutralRatio * 40 + (bright > 180 ? 25 : 0),
-      natural: neutralRatio * 80 + (bright > 170 ? 20 : 0) + (analysis.avgSat < 0.25 ? 15 : 0),
-      daily: (b.orange + b.yellow + neutralRatio * 100) / total * 40 + (bright > 130 ? 15 : 0)
+    const scored = looks.map(function (look) {
+      const sg = lookSignature(look);
+      const nd = RECO_NUDGE[look.id] || {};
+      let wSum = 0, hit = 0;
+      for (const k in sg.w) { hit += sg.w[k] * ratio(k); wSum += sg.w[k]; }
+      hit = wSum ? hit / wSum : 0;
+
+      // ① 签名色命中（图上有没有这款妆的代表色）
+      let score = hit * 100 * 0.56;
+
+      // ② 明度贴合（暗妆 / 亮妆分得开）
+      const wantLum = sg.lum + (nd.lum || 0);
+      const lumFit = Math.max(0, 1 - Math.abs(imgLum - wantLum) / 105);
+      score += lumFit * 100 * 0.26;
+
+      // ③ 饱和贴合（裸妆 vs 舞台妆）
+      const wantSat = Math.max(0, sg.sat + (nd.sat || 0));
+      const satFit = Math.max(0, 1 - Math.abs(analysis.avgSat - wantSat) / 0.5);
+      score += satFit * 100 * 0.18;
+
+      // ④ 暗色妆容额外看 dark 占比
+      const darkW = (sg.w.dark || 0) / Math.max(1, wSum);
+      if (darkW > 0) score += ratio('dark') * 55 * darkW;
+
+      // ⑤ 中性色占比对裸妆 / 男妆有加成
+      if (sg.w.neutral) score += ratio('neutral') * 22 * (sg.w.neutral / Math.max(1, wSum));
+
+      /* ⑥ 反向惩罚：图上明显存在的色，这款妆的签名里却没有 → 说明不像。
+       *    没有这条的话，「签名只有橙色」的妆容会把任何橙色偏多的图都抢走。 */
+      let miss = 0;
+      for (const k in b) {
+        const rr = ratio(k);
+        if (rr > 0.08 && !sg.w[k]) miss += rr;
+      }
+      score -= miss * 100 * 0.30;
+
+      score += (nd.bias || 0);
+      return { lookId: look.id, score: score };
+    });
+
+    scored.sort(function (a, b2) { return b2.score - a.score; });
+    const best = scored[0];
+    const second = scored[1];
+    if (!best) return null;
+
+    // 置信度：不光看绝对分，也看和第二名的差距
+    const gap = best.score - (second ? second.score : 0);
+    const confidence = Math.min(0.96, Math.max(0.40,
+      0.34 + best.score / 220 + Math.min(0.22, gap / 90)));
+
+    return {
+      lookId: best.lookId,
+      confidence: confidence,
+      reason: describeColors(analysis),
+      analysis: analysis,
+      ranked: scored.slice(0, 4)
     };
-
-    // 选最高分
-    let best = null;
-    for (const k in scores) { if (!best || scores[k] > best.score) best = { lookId: k, score: scores[k] }; }
-
-    // 置信度归一化
-    const confidence = Math.min(0.98, Math.max(0.42, best.score / 100));
-    const reason = describeColors(analysis);
-    return { lookId: best.lookId, confidence, reason, analysis };
   }
 
   function describeColors(analysis) {
@@ -570,17 +697,33 @@ window.VISION = (function () {
         if (hit) return Object.assign({}, hit, { cached: true });
       }
 
-      const prompt = '请分析这张妆容图片，判断妆容风格/类型，并用中文简洁回答，包含：\n1. 妆容风格名称\n2. 整体色调\n3. 眼妆、唇妆、底妆的特点\n4. 适合场合\n5. 若要在以下风格中选择最接近的一个，请只回复其英文 id：natural(清透裸妆)、daily(日常通勤妆)、sweet(甜美约会妆)、korean(韩系水光妆)、japanese(日系元气妆)、western(欧美深邃妆)、smokey(晚宴烟熏妆)、chinese(中式古典妆)。';
+      /* 候选妆容从数据里动态取，新增妆容自动进入识别范围 */
+      const allLooks = (typeof window !== 'undefined' && window.MAKEUP_DATA && window.MAKEUP_DATA.looks) || [];
+      const groupName = { female: '女妆', male: '男妆', cos: 'cos/舞台' };
+      const idList = allLooks.map(function (l) {
+        return l.id + '(' + l.name + '·' + (groupName[l.group] || '女妆') + ')';
+      }).join('、');
+      const prompt =
+        '请分析这张妆容图片，判断妆容风格/类型，用中文简洁回答：\n' +
+        '1. 妆容风格名称\n' +
+        '2. 整体色调\n' +
+        '3. 眼妆、唇妆、底妆的特点\n' +
+        '4. 适合场合\n' +
+        '5. 判断这是偏女性妆容、偏男性妆容，还是中性 / cos 角色妆；请说明依据（看眉形粗细与角度、修容轻重、唇色深浅、眼妆浓淡、有无假睫毛和卧蚕）\n' +
+        '6. 从下面的列表里选一个最接近的，只回复它的英文 id：' + idList + '\n' +
+        '重要：不要默认选女妆。男妆（底妆薄、哑光、修容重、眉毛直线条、无假睫毛）和 cos 妆（眼妆夸张、假睫毛、高遮瑕）都要认真考虑。';
       try {
         // 先缩放再上传：模型内部反正会缩，原图直传纯属浪费
         const sent = prepareForAPI(img, cfg.maxImageSize || 1024, 0.85);
         const resp = await callVisionAPI(sent, prompt, cfg);
         const text = resp.text;
-        // 尝试从回复中提取 lookId
+        // 尝试从回复中提取 lookId（用本地颜色分析的结果给候选排个序，优先匹配更像的）
         let lookId = null;
-        const ids = ['natural', 'daily', 'sweet', 'korean', 'japanese', 'western', 'smokey', 'chinese'];
+        const prefer = demo && demo.ranked ? demo.ranked.map(function (r) { return r.lookId; }) : [];
+        const ids = prefer.concat(allLooks.map(function (l) { return l.id; })
+          .filter(function (id) { return prefer.indexOf(id) < 0; }));
         for (const id of ids) {
-          const re = new RegExp('(^|[^a-z])' + id + '([^a-z]|$)', 'i');
+          const re = new RegExp('(^|[^a-z_])' + id + '([^a-z_]|$)', 'i');
           if (re.test(text)) { lookId = id; break; }
         }
         const out = {
@@ -588,6 +731,7 @@ window.VISION = (function () {
           confidence: lookId ? 0.85 : (demo ? demo.confidence : 0.6),
           reason: demo ? demo.reason : '', apiText: text,
           analysis: demo ? demo.analysis : null,
+          ranked: demo ? demo.ranked : null,
           usage: resp.usage, sentBytes: sent ? Math.round(sent.length * 0.75) : 0
         };
         if (cfg.cache !== false) cacheSet(cacheKey, out);
@@ -606,7 +750,7 @@ window.VISION = (function () {
       }
     }
 
-    if (demo) return { mode: 'demo', lookId: demo.lookId, confidence: demo.confidence, reason: demo.reason, apiText: '', analysis: demo.analysis };
+    if (demo) return { mode: 'demo', lookId: demo.lookId, confidence: demo.confidence, reason: demo.reason, apiText: '', analysis: demo.analysis, ranked: demo.ranked };
     return { mode: 'demo', lookId: 'natural', confidence: 0.5, reason: '无法读取图片像素，已回退到默认推荐。', apiText: '', analysis: null };
   }
 
@@ -794,6 +938,22 @@ window.VISION = (function () {
       skin: { oily: 3, dry: 1, combo: 3, normal: 3, sensitive: 1 },
       good: { acne: 3, darkCircle: 3, dull: 3, pore: 2 },
       bad: { fineLine: 2, redness: 2 }
+    },
+    cos_shonen: {
+      name: '少年感 cos 妆', note: '妆感克制、哑光干净，男生出男角色的通用底子；油皮友好',
+      undertone: { cool: 3, warm: 3, neutral: 3 },
+      depth: { fair: 2, light: 3, medium: 3, deep: 3 },
+      skin: { oily: 3, dry: 2, combo: 3, normal: 3, sensitive: 3 },
+      good: { acne: 3, redness: 3, darkCircle: 2, pore: 2 },
+      bad: {}
+    },
+    cos_dark: {
+      name: '暗黑反派妆', note: '全脸冷调哑光、唇色深；敏感肌用深色唇膏要谨慎',
+      undertone: { cool: 3, warm: 1, neutral: 2 },
+      depth: { fair: 3, light: 3, medium: 2, deep: 1 },
+      skin: { oily: 3, dry: 1, combo: 2, normal: 3, sensitive: 1 },
+      good: { acne: 3, darkCircle: 3, pore: 3, dull: 2 },
+      bad: { fineLine: 3, redness: 2 }
     }
   };
 
@@ -1335,6 +1495,7 @@ window.VISION = (function () {
     compressImage: compressImage,
     prepareForAPI: prepareForAPI,
     analyzeColors: analyzeColors,
+    matchLookByColor: matchLookByColor,
     inferSkinFromImage: inferSkinFromImage,
     checkQuizCompleteness: checkQuizCompleteness,
     recognizeLook: recognizeLook,

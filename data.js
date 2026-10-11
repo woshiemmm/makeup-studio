@@ -106,6 +106,7 @@ window.MAKEUP_DATA = {
   /* ---------- 可选妆容 ---------- */
   looks: [
     {
+      audience: 'f', scene: ['daily'],
       id: 'natural', name: '清透裸妆', en: 'Natural / No-Makeup', tagline: '伪素颜、干净通透，适合学生党与日常通勤',
       difficulty: '入门', occasion: '上学 / 上班 / 见长辈',
       palette: ['#f5c6ce', '#e8a2b0', '#d98292', '#b95f73'],
@@ -119,6 +120,7 @@ window.MAKEUP_DATA = {
       }
     },
     {
+      audience: 'f', scene: ['work', 'daily'],
       id: 'daily', name: '日常通勤妆', en: 'Daily Office', tagline: '得体干练、低调温柔，快速 15 分钟搞定',
       difficulty: '入门', occasion: '上班 / 面试 / 商务场合',
       palette: ['#e7c6a8', '#d4a184', '#c08160', '#9c6a52'],
@@ -132,6 +134,7 @@ window.MAKEUP_DATA = {
       }
     },
     {
+      audience: 'f', scene: ['date'],
       id: 'sweet', name: '甜美约会妆', en: 'Sweet Date', tagline: '粉嫩浪漫、柔美亲和，适合约会与聚会',
       difficulty: '进阶', occasion: '约会 / 聚会 / 拍照',
       palette: ['#f9c3d2', '#f291ae', '#e76f96', '#c94f79'],
@@ -145,6 +148,7 @@ window.MAKEUP_DATA = {
       }
     },
     {
+      audience: 'f', scene: ['daily', 'date'],
       id: 'korean', name: '韩系水光妆', en: 'Korean Glass Skin', tagline: '水光透亮、饱满嘭润，追求「玻璃肌」质感',
       difficulty: '进阶', occasion: '日常 / 约会 / 上镜',
       palette: ['#fde2e6', '#f5b8c5', '#e89ab0', '#c97590'],
@@ -159,6 +163,7 @@ window.MAKEUP_DATA = {
       }
     },
     {
+      audience: 'f', scene: ['daily', 'date'],
       id: 'japanese', name: '日系元气妆', en: 'Japanese Genki', tagline: '蜜桃橘调、元气满满，少女感十足',
       difficulty: '进阶', occasion: '日常 / 出行 / 拍照',
       palette: ['#fbd9c0', '#f7b98e', '#ee9a66', '#d97a4d'],
@@ -172,6 +177,7 @@ window.MAKEUP_DATA = {
       }
     },
     {
+      audience: 'f', scene: ['work', 'stage'],
       id: 'western', name: '欧美深邃妆', en: 'Western Glam', tagline: '立体轮廓、上扬眼线，气场全开',
       difficulty: '进阶', occasion: '派对 / 街拍 / 舞台',
       palette: ['#d9a05b', '#c98b4e', '#a9683f', '#7d4c30'],
@@ -186,6 +192,7 @@ window.MAKEUP_DATA = {
       }
     },
     {
+      audience: 'f', scene: ['stage'],
       id: 'smokey', name: '晚宴烟熏妆', en: 'Smokey Evening', tagline: '深邃神秘、浓郁华丽，晚宴夜场吸睛之选',
       difficulty: '高阶', occasion: '晚宴 / 派对 / 夜场',
       palette: ['#5b4a56', '#3f3440', '#2c2430', '#181419'],
@@ -199,6 +206,7 @@ window.MAKEUP_DATA = {
       }
     },
     {
+      audience: 'f', scene: ['formal'],
       id: 'chinese', name: '中式古典妆', en: 'Chinese Classical', tagline: '明眸善睐、红唇点绛，东方古典韵味',
       difficulty: '进阶', occasion: '汉服 / 国风 / 拍摄 / 舞台',
       palette: ['#c9404b', '#b0303c', '#8f2a33', '#5c2328'],
@@ -215,6 +223,7 @@ window.MAKEUP_DATA = {
 
     /* ==================== 男妆 ==================== */
     {
+      audience: 'm', scene: ['daily', 'work'],
       id: 'mens_base', group: 'male', name: '男生清透底妆', en: 'Men\'s Natural Base',
       tagline: '遮掉痘印和泛红，但看不太出化了妆 —— 男生入门第一款',
       difficulty: '入门', occasion: '日常 / 上课 / 面试 / 证件照',
@@ -241,6 +250,7 @@ window.MAKEUP_DATA = {
       }
     },
     {
+      audience: 'm', scene: ['formal', 'stage'],
       id: 'mens_bone', group: 'male', name: '男生立体骨相妆', en: 'Men\'s Contour / Bone Structure',
       tagline: '靠修容强化下颌线与鼻梁，上镜更立体',
       difficulty: '进阶', occasion: '拍照 / 上镜 / 舞台 / 婚礼',
@@ -267,6 +277,7 @@ window.MAKEUP_DATA = {
       }
     },
     {
+      audience: 'm', scene: ['work', 'daily'],
       id: 'mens_eye', group: 'male', name: '男生眉眼精神妆', en: 'Men\'s Brow & Eye',
       tagline: '五分钟提精神，只做眉毛和眼周',
       difficulty: '入门', occasion: '上班 / 面试 / 见客户 / 熬夜后',
@@ -293,6 +304,7 @@ window.MAKEUP_DATA = {
 
     /* ==================== cos 妆 ==================== */
     {
+      audience: 'any', scene: ['cosplay'],
       id: 'cos_anime', group: 'cos', name: '二次元动漫妆', en: 'Anime / 2D Cosplay',
       tagline: '放大眼型、强化下睫毛，还原动漫角色的大眼感',
       difficulty: '进阶', occasion: '漫展 / 角色扮演 / 动漫写真',
@@ -326,6 +338,7 @@ window.MAKEUP_DATA = {
       }
     },
     {
+      audience: 'any', scene: ['cosplay', 'formal'],
       id: 'cos_guofeng', group: 'cos', name: '古风 cos 妆', en: 'Chinese Historical Cosplay',
       tagline: '柳叶眉、桃花眼、樱桃口，配汉服与古风写真',
       difficulty: '高阶', occasion: '古风cos / 汉服活动 / 国风摄影',
@@ -360,6 +373,7 @@ window.MAKEUP_DATA = {
       }
     },
     {
+      audience: 'any', scene: ['stage'],
       id: 'cos_idol', group: 'cos', name: '舞台爱豆妆', en: 'Stage Idol',
       tagline: '强显色、带闪片，扛得住舞台灯光与高清镜头',
       difficulty: '高阶', occasion: '舞台演出 / 应援 / 拍视频 / 直播',
@@ -388,6 +402,76 @@ window.MAKEUP_DATA = {
         },
         finish: {
           notes: ['定妆喷雾 + 散粉双重定妆，务必喷两层', '随身带吸油纸、口红、睫毛胶，中场快速补妆', '闪片掉落是正常的，中场用棉签清理眼下再补']
+        }
+      }
+    },
+    {
+      audience: 'm', scene: ['cosplay'],
+      id: 'cos_shonen', group: 'cos', audience: 'm', name: '少年感 cos 妆', en: 'Shonen / Male Character Cosplay',
+      tagline: '男角色、少年漫角色的通用底子：干净、有精神、不女气',
+      difficulty: '进阶', occasion: '漫展 / 男角色 cos / 少年漫写真',
+      palette: ['#ead7c6', '#c9ab94', '#6b5a52', '#2e2a33'],
+      desc: '男生出 cos 最常见的翻车点是「妆太女」—— 眼线太粗、腮红太重、唇色太艳。这款妆的核心是：把五官做立体、把气色提起来，但每一步都克制。',
+      tweaks: {
+        prep: {
+          intro: '男角色妆的妆前重点是控油和收敛毛孔，底妆越平越像「二次元的干净脸」。',
+          notes: ['控油妆前乳只涂 T 区和鼻翼两侧', '剃须后的泛红用绿色隔离中和一下', '若角色是白发或浅发，先用染眉膏把眉毛调浅，不然会很突兀']
+        },
+        base: {
+          intro: '底妆追求「干净但不像化了妆」。色号比女妆深，妆效偏哑光。',
+          notes: ['选和脖子颜色一致的粉底，不要比脖子白', '薄涂两层比一次厚涂自然得多', '痘印、胡青用遮瑕点涂，不要全脸盖', '下颌线和脖子、耳朵都要带过，否则镜头里会有一道边', '全脸哑光定妆，二次元脸的「平」靠的是无油光']
+        },
+        brow: {
+          intro: '男角色的眉毛要比日常更「有型」，因为镜头会吃掉细节。',
+          notes: ['眉形偏直、眉峰明确，不要画成女生的弯眉', '颜色用灰棕或深灰，比发色深一号', '眉毛加粗一点在镜头里才有存在感', '浅发色角色一定要用染眉膏把眉毛调浅']
+        },
+        eye: {
+          intro: '男角色眼妆的全部目的是「让眼睛有神」，不是放大眼睛。',
+          notes: ['哑光浅棕轻扫整个眼窝，做出一点阴影就够', '眼线用棕色，只画上眼尾三分之一，绝对不要画下眼线', '睫毛夹翘、薄刷一层透明或棕色睫毛膏，不要浓密款', '想要「锐利感」可以在眼尾稍微拉长一点点，但别上挑', '绝对不要用珠光、闪片、卧蚕 —— 这三样是男角色妆变女气的主因']
+        },
+        cheek: {
+          notes: ['男角色妆基本不用腮红，用一点哑光修容代替', '修容扫下颌线和颧骨下方，把脸型做清晰', '想要少年感就在颧骨最高点扫一层极淡的暖色，看不到红只看到气色']
+        },
+        lip: {
+          notes: ['唇色选几乎和原本唇色一样的裸色或淡豆沙', '只涂一层、用手指晕开，不要有唇线', '绝对不要用亮面唇釉，哑光或润唇膏质地即可', '若角色设定唇色偏深，用深一档的裸棕薄涂']
+        },
+        finish: {
+          notes: ['哑光定妆，任何油光都会让「二次元脸」垮掉', '拍照前用吸油纸压一遍 T 区', '假发戴好后检查发际线和鬓角，这两个位置最容易穿帮']
+        }
+      }
+    },
+    {
+      audience: 'any', scene: ['cosplay', 'stage'],
+      id: 'cos_dark', group: 'cos', audience: 'any', name: '暗黑反派妆', en: 'Dark / Villain Cosplay',
+      tagline: '反派、吸血鬼、病娇、暗黑系 —— 靠阴影和暗唇做出压迫感',
+      difficulty: '高阶', occasion: '漫展 / 反派 cos / 暗黑系写真',
+      palette: ['#8a7f9c', '#5b4a6b', '#3a2c45', '#8a1f3d'],
+      desc: '和 «少年感» 正好相反：这款妆要的就是「不像活人」。核心是压低整体明度、加深眼窝与颧骨阴影、用暗红或紫黑唇色收尾，男女角色都适用。',
+      tweaks: {
+        prep: {
+          notes: ['底妆要比自己肤色白一到两号，做出「气血不足」的苍白感', '眼下和颧骨位置可以先用浅色打底，后面加深阴影时对比更强', '若角色有疤痕/纹身设定，这一步先把皮肤处理干净再画']
+        },
+        base: {
+          intro: '底妆追求「冷、白、无血色」，哑光到极致。',
+          notes: ['用比自己白一到两号的粉底，全脸薄涂两层', '泛红处用绿色隔离中和，暗黑系不能有暖红', '遮瑕做到无瑕，反派妆的干净感来自「没有杂色」', '全脸厚定妆，纯哑光，一点光泽都不要', '脖子和手也要一起上妆，不然穿帮很明显']
+        },
+        brow: {
+          notes: ['眉形可以画得比日常更挑、更细，制造攻击性', '颜色用灰黑或深棕，不要暖棕', '眉尾收得干净利落，不要圆钝', '女角色可以画成上挑的锐利眉，男角色保持直线条']
+        },
+        eye: {
+          intro: '整款妆的灵魂：把眼窝挖深，让眼睛陷进阴影里。',
+          notes: ['用灰紫、冷棕大量晕染整个眼窝，范围比日常大很多', '眼尾向斜上方拉长晕染，做出「吊梢」的压迫感', '眼线用黑色，上下都要画，下眼线画满并与上眼线在眼尾连成三角', '内眼角可以用一点深色，让眼神更「空」', '下眼睑的红色调（病娇感）用暗红或紫红小范围晕染', '睫毛可以刷浓，但不要翘得太可爱，直一点更阴冷', '眼白多的角色可以贴小直径美瞳，但别用亮色']
+        },
+        cheek: {
+          intro: '修容是暗黑妆的第二重点：把颧骨下方挖空，脸立刻「瘦而冷」。',
+          notes: ['阴影色用冷调灰紫，暖棕会显脏显黄', '颧骨下方斜向深扫，范围比日常大', '额头两侧、下颌线都要扫到，把脸收窄', '高光只用哑光浅色点鼻梁和眉骨，不要珠光', '腮红可以完全省略，或者用极淡的灰紫扫在颧骨下方冒充血色']
+        },
+        lip: {
+          intro: '唇色决定角色的「善恶值」，是最出效果的一步。',
+          notes: ['反派/吸血鬼：暗红、酒红、紫黑，饱和度压低', '病娇：可以用暗红在唇中央做渐变，边缘用遮瑕虚化', '唇形可以画得比原本更薄、更冷硬', '哑光是必须的，亮面会显得活泼，和角色气质相反', '想要「咬唇」效果就用遮瑕盖住唇缘再往中间晕']
+        },
+        finish: {
+          notes: ['哑光定妆，全脸定两次，暗黑妆最怕出油', '可以少量用灰色散粉压一压，让皮肤看起来更「冷」', '拍照时刻意避开暖光，暖光会毁掉整个冷调']
         }
       }
     }
@@ -556,6 +640,26 @@ window.MAKEUP_DATA = {
       { c: '唇妆', item: '高饱和持久唇釉', note: '颜色越正越上镜', kw: '高饱和 持久 唇釉 正红' },
       { c: '定妆', item: '定妆喷雾 + 控油散粉', note: '喷两层，演出中还要补', kw: '定妆喷雾 控油 散粉 持妆' },
       { c: '工具', item: '睫毛胶 + 吸油纸 + 棉签', note: '中场补妆的救命三件套', kw: '假睫毛胶水 吸油纸 棉签' }
+    ],
+    cos_shonen: [
+      { c: '妆前', item: '控油妆前乳', note: '男角色妆要哑光，妆前先控油', kw: '控油 妆前乳 修饰毛孔' },
+      { c: '底妆', item: '自然色粉底（与脖子同色）', note: '不要比脖子白，否则镜头里一道边', kw: '自然色 哑光 粉底液 男' },
+      { c: '遮瑕', item: '遮瑕膏（痘印 / 胡青）', note: '只点涂瑕疵，不要全脸盖', kw: '遮瑕膏 痘印 胡青 自然' },
+      { c: '眉妆', item: '灰棕眉笔 + 染眉膏', note: '浅发色角色必须用染眉膏把眉毛调浅', kw: '灰棕 眉笔 染眉膏 浅色' },
+      { c: '眼妆', item: '哑光浅棕单色眼影', note: '只做眼窝阴影，不要珠光闪片', kw: '哑光 浅棕 单色眼影' },
+      { c: '眼妆', item: '棕色眼线胶笔', note: '只画上眼尾三分之一，绝对不画下眼线', kw: '棕色 眼线 胶笔 防水' },
+      { c: '唇妆', item: '裸色 / 淡豆沙唇膏', note: '只涂一层晕开，不要亮面唇釉', kw: '裸色 豆沙 哑光 唇膏' },
+      { c: '修容', item: '冷调灰棕修容', note: '男角色靠修容做立体感，不用腮红', kw: '灰棕 冷调 修容 男' }
+    ],
+    cos_dark: [
+      { c: '底妆', item: '偏白粉底（白 1~2 号）', note: '暗黑系要「气血不足」的苍白感', kw: '白皙 粉底液 冷调 高遮瑕' },
+      { c: '妆前', item: '绿色隔离', note: '中和泛红，暗黑妆不能有暖红', kw: '绿色 隔离 修红' },
+      { c: '眼妆', item: '灰紫 / 冷棕眼影盘', note: '把整个眼窝挖深，范围要比日常大', kw: '灰紫 冷棕 眼影盘 哑光' },
+      { c: '眼妆', item: '黑色眼线液（粗头）', note: '上下都要画，眼尾连成三角', kw: '黑色 眼线液 防水 粗' },
+      { c: '眼妆', item: '暗红 / 紫红单色眼影', note: '眼下小范围晕染，做病娇感', kw: '暗红 紫红 单色眼影' },
+      { c: '唇妆', item: '暗红 / 酒红 / 紫黑哑光唇膏', note: '唇色决定角色的善恶值', kw: '暗红 酒红 紫黑 哑光 唇膏' },
+      { c: '修容', item: '冷调灰紫修容', note: '颧骨下方挖空，脸立刻瘦而冷', kw: '灰紫 冷调 修容 阴影' },
+      { c: '定妆', item: '哑光散粉 + 定妆喷雾', note: '一点光泽都不要，定两次', kw: '哑光 散粉 定妆喷雾 控油' }
     ]
   },
 
@@ -617,6 +721,34 @@ window.MAKEUP_DATA = {
     { id: 'soft',  name: '柔和圆润', desc: '大圆角、柔和阴影，默认样式' },
     { id: 'crisp', name: '清爽利落', desc: '小圆角、清晰描边、扁平阴影' },
     { id: 'glass', name: '玻璃拟态', desc: '半透明磨砂卡片，背景透出来' }
+  ],
+
+  /* ============ 妆容分类体系 ============
+   * 三个维度互相独立，可以组合筛选：
+   *   group    —— 类型：female 日常女妆 / male 男生妆容 / cos 角色与舞台
+   *   audience —— 适合谁：f 偏女性 / m 偏男性 / any 男女皆可
+   *   scene    —— 场合：可多选
+   */
+  lookGroups: [
+    { id: 'all',    name: '全部',      icon: '✨' },
+    { id: 'female', name: '日常女妆',   icon: '💄' },
+    { id: 'male',   name: '男生妆容',   icon: '🧔' },
+    { id: 'cos',    name: 'Cos · 舞台', icon: '🎭' }
+  ],
+
+  audiences: [
+    { id: 'f',   name: '偏女性' },
+    { id: 'm',   name: '偏男性' },
+    { id: 'any', name: '男女皆可' }
+  ],
+
+  scenes: [
+    { id: 'daily',   name: '日常',     icon: '☀️', desc: '上学、逛街、见朋友' },
+    { id: 'work',    name: '职场',     icon: '💼', desc: '上班、面试、见客户' },
+    { id: 'date',    name: '约会聚会', icon: '💕', desc: '约会、生日、朋友聚会' },
+    { id: 'stage',   name: '舞台派对', icon: '🎤', desc: '演出、蹦迪、夜店、拍照' },
+    { id: 'formal',  name: '正式场合', icon: '🎩', desc: '婚礼、典礼、商务晚宴' },
+    { id: 'cosplay', name: '角色扮演', icon: '🎭', desc: '漫展、汉服、cos 写真' }
   ],
 
   /* ============ 总预算套餐（从每个品类挑一款凑成一套） ============ */

@@ -16,7 +16,8 @@
     faceFile: null,
     lastRecognize: null,      // 最近一次识别结果，供「保存到我的妆容」使用
     processLook: '',          // 「化妆流程」板块当前指定的妆容，空 = 标准流程
-    lookGroup: 'all'          // 选妆分类筛选：all / female / male / cos
+    lookGroup: 'all',         // 选妆分类筛选：all / female / male / cos
+    lookScenes: []            // 选妆场合筛选（可多选）
   };
 
   const $ = function (sel) { return document.querySelector(sel); };
@@ -187,30 +188,66 @@
   }
 
   /* ============ 选妆 ============ */
-  const LOOK_GROUPS = [
-    { id: 'all',   name: '全部',  icon: '✨' },
-    { id: 'female', name: '日常女妆', icon: '💄' },
-    { id: 'male',  name: '男生妆容', icon: '🧔' },
-    { id: 'cos',   name: 'Cos / 舞台', icon: '🎭' }
-  ];
-
   function lookGroup(l) { return l.group || 'female'; }
+  const AUDIENCE_LABEL = { f: '偏女性', m: '偏男性', any: '男女皆可' };
 
   function renderLookTabs() {
     const box = $('#look-tabs');
     if (!box) return;
-    const cur = state.lookGroup || 'all';
-    box.innerHTML = LOOK_GROUPS.map(function (g) {
+    const curG = state.lookGroup || 'all';
+    const curS = state.lookScenes || [];
+
+    /* 第一行：类型 */
+    const groups = (D.lookGroups || [
+      { id: 'all', name: '全部', icon: '✨' },
+      { id: 'female', name: '日常女妆', icon: '💄' },
+      { id: 'male', name: '男生妆容', icon: '🧔' },
+      { id: 'cos', name: 'Cos · 舞台', icon: '🎭' }
+    ]);
+    let html = '<div class="look-tabs">' + groups.map(function (g) {
       const n = g.id === 'all'
         ? D.looks.length
         : D.looks.filter(function (l) { return lookGroup(l) === g.id; }).length;
       if (!n) return '';
-      return '<button class="look-tab' + (g.id === cur ? ' active' : '') + '" data-lookgroup="' + g.id +
-        '" type="button">' + g.icon + ' ' + g.name + '<i>' + n + '</i></button>';
-    }).join('');
+      return '<button class="look-tab' + (g.id === curG ? ' active' : '') + '" data-lookgroup="' + g.id +
+        '" type="button">' + g.icon + ' ' + escapeHtml(g.name) + '<i>' + n + '</i></button>';
+    }).join('') + '</div>';
+
+    /* 第二行：场合（可多选） */
+    const scenes = D.scenes || [];
+    if (scenes.length) {
+      html += '<div class="look-scenes">' +
+        '<span class="ls-label">场合</span>' +
+        scenes.map(function (s) {
+          const on = curS.indexOf(s.id) >= 0;
+          const n = D.looks.filter(function (l) {
+            return (l.scene || []).indexOf(s.id) >= 0 && (curG === 'all' || lookGroup(l) === curG);
+          }).length;
+          return '<button class="ls-chip' + (on ? ' active' : '') + '" data-lookscene="' + s.id +
+            '" type="button" title="' + escapeHtml(s.desc || '') + '">' + s.icon + ' ' + escapeHtml(s.name) +
+            '<i>' + n + '</i></button>';
+        }).join('') +
+        (curS.length ? '<button class="ls-clear" data-lookscene="__clear" type="button">清除场合筛选</button>' : '') +
+      '</div>';
+    }
+
+    box.innerHTML = html;
+
     box.querySelectorAll('[data-lookgroup]').forEach(function (b) {
       b.addEventListener('click', function () {
         state.lookGroup = b.dataset.lookgroup;
+        state.lookScenes = [];
+        renderLookTabs();
+        renderLookGrid($('#look-search') ? $('#look-search').value : '');
+      });
+    });
+    box.querySelectorAll('[data-lookscene]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        const id = b.dataset.lookscene;
+        let s = (state.lookScenes || []).slice();
+        if (id === '__clear') s = [];
+        else s = s.indexOf(id) >= 0 ? s.filter(function (x) { return x !== id; }) : s.concat(id);
+        state.lookScenes = s;
         renderLookTabs();
         renderLookGrid($('#look-search') ? $('#look-search').value : '');
       });
@@ -222,11 +259,13 @@
     grid.innerHTML = '';
     const q = (filter || '').trim().toLowerCase();
     const grp = state.lookGroup || 'all';
+    const scenes = state.lookScenes || [];
     const diffClass = { '入门': 'diff-easy', '进阶': 'diff-mid', '高阶': 'diff-hard' };
     let i = 0;
     D.looks.forEach(function (look) {
       if (grp !== 'all' && lookGroup(look) !== grp) return;
-      const hay = (look.name + look.en + look.tagline + look.occasion).toLowerCase();
+      if (scenes.length && !scenes.some(function (s) { return (look.scene || []).indexOf(s) >= 0; })) return;
+      const hay = (look.name + look.en + look.tagline + look.occasion + (look.scene || []).join('')).toLowerCase();
       if (q && hay.indexOf(q) === -1) return;
       const isSel = state.currentLook === look.id;
       const card = el('div', 'look-card' + (isSel ? ' selected' : ''));
@@ -239,6 +278,15 @@
         '</div>' +
         '<div class="body">' +
         '<div class="swatches">' + look.palette.map(function (c) { return '<span class="swatch" style="background:' + c + '"></span>'; }).join('') + '</div>' +
+        '<div class="look-tags">' +
+          '<span class="lt-aud lt-' + (look.audience || 'any') + '">' +
+            (look.audience === 'm' ? '♂' : look.audience === 'f' ? '♀' : '⚥') + ' ' +
+            (AUDIENCE_LABEL[look.audience] || '男女皆可') + '</span>' +
+          (look.scene || []).map(function (s) {
+            const sc = (D.scenes || []).find(function (x) { return x.id === s; });
+            return sc ? '<span class="lt-scene">' + sc.icon + ' ' + escapeHtml(sc.name) + '</span>' : '';
+          }).join('') +
+        '</div>' +
         '<p class="tag">' + escapeHtml(look.tagline) + '</p>' +
         '<button class="btn-preview" type="button">' +
           (isSel ? '✓ 已选择 · 参考与教程' : '👁 参考与教程') +
@@ -260,9 +308,10 @@
       grid.appendChild(card);
     });
     if (!grid.children.length) {
-      grid.appendChild(el('p', 'tag',
-        q ? '没找到匹配的妆容，试试「烟熏」「裸妆」「男」「cos」等关键词。'
-          : '这个分类下暂时没有妆容。'));
+      grid.appendChild(el('p', 'tag', scenes.length
+        ? '这个场合下还没有妆容，换个场合或点「清除场合筛选」看看。'
+        : (q ? '没找到匹配的妆容，试试「烟熏」「裸妆」「男」「cos」等关键词。'
+             : '这个分类下暂时没有妆容。')));
     }
   }
 
@@ -1265,12 +1314,20 @@
     const isApi = r.mode === 'api';
 
     const main = el('div', 'result-box');
+    const AUD = { f: '♀ 偏女性', m: '♂ 偏男性', any: '⚥ 男女皆可' };
+    const sceneNames = (look.scene || []).map(function (s) {
+      const sc = (D.scenes || []).find(function (x) { return x.id === s; });
+      return sc ? sc.icon + sc.name : s;
+    });
     main.innerHTML =
-      '<h4>🔍 识别结果：' + escapeHtml(look.name) + '</h4>' +
+      '<h4>🔍 识别结果：' + escapeHtml(look.name) +
+        ' <span class="lt-aud lt-' + (look.audience || 'any') + '">' + (AUD[look.audience] || '') + '</span>' +
+        '</h4>' +
       '<p class="sub">' + escapeHtml(look.tagline) + '（' + (isApi ? 'AI 视觉识别' : '本地配色分析演示模式') + '）</p>' +
+      (sceneNames.length ? '<p class="sub" style="margin-top:-4px">适合场合：' + escapeHtml(sceneNames.join(' · ')) + '</p>' : '') +
       '<div class="meter"><i style="width:' + Math.round(r.confidence * 100) + '%"></i></div>' +
       '<p class="confidence">' +
-        (isApi ? 'AI 匹配度（模型从 8 种风格中选出）：' : '本地匹配置信度：') +
+        (isApi ? 'AI 匹配度（模型从 ' + D.looks.length + ' 种风格中选出）：' : '本地匹配置信度：') +
         Math.round(r.confidence * 100) + '%</p>' +
       '<div class="tag-row">' + look.palette.map(function (c) { return '<span class="tag-chip" style="background:' + c + '22;border:1px solid ' + c + ';color:' + c + '">' + c + '</span>'; }).join('') + '</div>';
     // 本次花费，方便判断成本
@@ -1305,6 +1362,38 @@
     cols.appendChild(c2);
 
     box.appendChild(cols);
+
+    /* 候选排名：本地分析的完整排序，识别不准时用户能看到更接近的备选 */
+    const ranked = (r.analysis && r.ranked) || (r.ranked || null);
+    if (ranked && ranked.length > 1) {
+      const alt = el('div', 'result-box');
+      alt.innerHTML =
+        '<h4>📊 候选排名</h4>' +
+        '<p class="hint" style="margin-top:0">按配色相似度排序。识别不准时可以从这里手动选更像的一款。</p>' +
+        '<div class="rank-list">' +
+          ranked.map(function (x, i) {
+            const l2 = D.looks.find(function (y) { return y.id === x.lookId; });
+            if (!l2) return '';
+            const pct = Math.max(4, Math.min(100, Math.round(x.score)));
+            return '<button class="rank-item' + (i === 0 ? ' top' : '') + '" data-rank-look="' + x.lookId + '" type="button">' +
+              '<span class="rk-no">' + (i + 1) + '</span>' +
+              '<span class="rk-name">' + escapeHtml(l2.name) +
+                '<i class="lt-aud lt-' + (l2.audience || 'any') + '">' + (AUD[l2.audience] || '').replace(/^[♀♂⚥]\s*/, '') + '</i>' +
+              '</span>' +
+              '<span class="rk-bar"><i style="width:' + pct + '%"></i></span>' +
+              '<span class="rk-score">' + pct + '</span>' +
+            '</button>';
+          }).join('') +
+        '</div>';
+      alt.querySelectorAll('[data-rank-look]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          selectLook(b.dataset.rankLook);
+          go('teach');
+          toast('已切换到「' + (D.looks.find(function (y) { return y.id === b.dataset.rankLook; }) || {}).name + '」', { type: 'ok' });
+        });
+      });
+      box.appendChild(alt);
+    }
 
     if (r.mode === 'api' && r.apiText) {
       const ai = el('div', 'result-box');
