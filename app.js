@@ -3067,7 +3067,7 @@
 
     list.forEach(function (item, i) {
       const card = el('div', 'my-look-card');
-      card.style.animationDelay = (i * 55) + 'ms';
+      card.style.animationDelay = (Math.min(i, 11) * 45) + 'ms';   // 封顶，存了几十款也不会等半天
       const thumb = item.image
         ? '<img class="my-look-thumb" src="' + item.image + '" alt="' + escapeHtml(item.name) + '" />'
         : '<div class="my-look-thumb" style="background:linear-gradient(135deg,' +
