@@ -599,13 +599,24 @@ window.MAKEUP_DATA = {
   /* ============ 界面主题配色（设置 → 个性化 里切换） ============ */
   themes: [
     { id: 'rose',     name: '玫瑰粉', colors: ['#ec5f8a', '#d43d74', '#fde7ef'], desc: '默认，甜而不腻' },
+    { id: 'bluepink', name: '蓝粉白', colors: ['#6f8fe0', '#a578e0', '#ec6f9f'], desc: '蓝到粉的渐变，招牌款', hot: true },
     { id: 'berry',    name: '莓果红', colors: ['#c9426f', '#a82c56', '#fbe7ee'], desc: '更沉稳的红调' },
     { id: 'lavender', name: '薰衣草', colors: ['#9b6bd6', '#7b4fb5', '#f1e9fa'], desc: '柔和紫，安静' },
+    { id: 'galaxy',   name: '星空紫', colors: ['#6a5fd6', '#5246b8', '#ece9fb'], desc: '靛蓝，偏清冷' },
     { id: 'ocean',    name: '海盐蓝', colors: ['#4a90d9', '#2f74bd', '#e6f0fa'], desc: '清爽，偏中性' },
+    { id: 'mint',     name: '薄荷绿', colors: ['#35b3a4', '#1f9184', '#e4f7f4'], desc: '清凉，夏天感' },
     { id: 'matcha',   name: '抹茶绿', colors: ['#4fa87a', '#358a5e', '#e6f5ec'], desc: '自然，护眼' },
     { id: 'peach',    name: '蜜桃橘', colors: ['#f08a5d', '#d96a3a', '#fdeee6'], desc: '元气活泼' },
+    { id: 'coral',    name: '珊瑚红', colors: ['#f2736b', '#d9534b', '#fdeae8'], desc: '明快，有活力' },
     { id: 'cocoa',    name: '奶茶棕', colors: ['#b08268', '#916649', '#f5ede7'], desc: '低调耐看' },
     { id: 'ink',      name: '墨黑',   colors: ['#5b5b66', '#3f3f49', '#ebebef'], desc: '极简高级灰' }
+  ],
+
+  /* ============ 界面风格（质感）—— 与配色独立，可自由组合 ============ */
+  uiStyles: [
+    { id: 'soft',  name: '柔和圆润', desc: '大圆角、柔和阴影，默认样式' },
+    { id: 'crisp', name: '清爽利落', desc: '小圆角、清晰描边、扁平阴影' },
+    { id: 'glass', name: '玻璃拟态', desc: '半透明磨砂卡片，背景透出来' }
   ],
 
   /* ============ 总预算套餐（从每个品类挑一款凑成一套） ============ */

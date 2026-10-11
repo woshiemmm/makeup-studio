@@ -202,6 +202,7 @@ window.STORE = (function () {
     budgetTotal: 0,       // 总预算模式的金额（元），0 表示未设置
     budgetPreset: 'makeup', // 总预算套餐：makeup（彩妆全妆）/ all（彩妆+护肤）
     theme: 'rose',        // 界面主题配色
+    uiStyle: 'soft',      // 界面风格（质感）：soft / crisp / glass
     showShop: true,       // 是否显示化妆品购买入口
     guide: true           // 是否显示新手辅助（手法技巧 / 画错补救）
   };

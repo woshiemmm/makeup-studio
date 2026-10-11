@@ -456,7 +456,7 @@
   /* ============ 化妆辅助：眼型 / 脸型 / 参考线 / 自检清单 ============ */
   function currentPrefs() { return S.getPrefs(); }
 
-  /* ============ 界面主题 ============ */
+  /* ============ 界面主题与风格 ============ */
   function applyTheme(id) {
     const t = (id || 'rose');
     const root = document.documentElement;
@@ -465,11 +465,31 @@
     else root.setAttribute('data-theme', t);
   }
 
+  function applyUIStyle(id) {
+    const s = (id || 'soft');
+    const root = document.documentElement;
+    if (s === 'soft') root.removeAttribute('data-style');
+    else root.setAttribute('data-style', s);
+  }
+
+  function applyAppearance() {
+    const p = currentPrefs();
+    applyTheme(p.theme);
+    applyUIStyle(p.uiStyle);
+  }
+
   function setTheme(id) {
     S.setPrefs({ theme: id });
     applyTheme(id);
     const t = (D.themes || []).find(function (x) { return x.id === id; });
     flashPers('已切换到「' + ((t && t.name) || id) + '」主题');
+  }
+
+  function setUIStyle(id) {
+    S.setPrefs({ uiStyle: id });
+    applyUIStyle(id);
+    const s = (D.uiStyles || []).find(function (x) { return x.id === id; });
+    flashPers('界面风格：' + ((s && s.name) || id));
   }
 
   /* 判断某个开关当前是否开启（grid/checklist 默认关，showShop/guide 默认开） */
@@ -535,7 +555,7 @@
     const themeGrid = function () {
       const cur = currentPrefs().theme || 'rose';
       return '<div class="pers-group">' +
-        '<div class="pers-head"><b>🎨 界面主题</b><small>换一套配色，立刻生效，设置存在当前账号</small></div>' +
+        '<div class="pers-head"><b>🎨 界面主题</b><small>12 套配色，点一下立刻生效，按账号保存</small></div>' +
         '<div class="theme-grid">' +
           (D.themes || []).map(function (t) {
             return '<button class="theme-swatch' + (t.id === cur ? ' active' : '') + '" data-theme="' + t.id +
@@ -543,8 +563,28 @@
               '<span class="ts-dots">' +
                 t.colors.map(function (c) { return '<i style="background:' + c + '"></i>'; }).join('') +
               '</span>' +
-              '<span class="ts-name">' + escapeHtml(t.name) + '</span>' +
+              '<span class="ts-name">' + escapeHtml(t.name) +
+                (t.hot ? '<em class="ts-hot">推荐</em>' : '') + '</span>' +
               '<span class="ts-check">' + (t.id === cur ? '✓ 使用中' : '') + '</span>' +
+            '</button>';
+          }).join('') +
+        '</div>' +
+      '</div>';
+    };
+
+    /* 风格（质感）：和配色独立，可自由组合 */
+    const styleGrid = function () {
+      const cur = currentPrefs().uiStyle || 'soft';
+      return '<div class="pers-group">' +
+        '<div class="pers-head"><b>🧊 界面风格</b><small>和配色独立，12 × 3 一共 36 种组合</small></div>' +
+        '<div class="style-grid">' +
+          (D.uiStyles || []).map(function (s) {
+            return '<button class="style-card' + (s.id === cur ? ' active' : '') + '" data-uistyle="' + s.id +
+              '" data-style="' + s.id + '" type="button">' +
+              '<span class="sc-preview"><i></i><i></i><i></i></span>' +
+              '<span class="sc-name">' + escapeHtml(s.name) + '</span>' +
+              '<span class="sc-desc">' + escapeHtml(s.desc) + '</span>' +
+              '<span class="sc-check">' + (s.id === cur ? '✓ 使用中' : '') + '</span>' +
             '</button>';
           }).join('') +
         '</div>' +
@@ -553,6 +593,7 @@
 
     body.innerHTML =
       themeGrid() +
+      styleGrid() +
       chipRow('👁 我的眼型', '眼妆步骤会给出针对这个眼型的调整', D.eyeShapes || [], 'eye', currentPrefs().eye, true) +
       chipRow('😊 我的脸型', '腮红修容步骤会给出针对这个脸型的调整', D.faceShapes || [], 'face', currentPrefs().face, true) +
       chipRow('💰 预算档位', '决定购物清单里搜索关键词的价位倾向', tiers, 'tier', defaultTier, false) +
@@ -607,6 +648,14 @@
     body.querySelectorAll('[data-theme]').forEach(function (b) {
       b.addEventListener('click', function () {
         setTheme(b.dataset.theme);
+        renderPersonalize();
+      });
+    });
+
+    // 界面风格
+    body.querySelectorAll('[data-uistyle]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        setUIStyle(b.dataset.uistyle);
         renderPersonalize();
       });
     });
@@ -3349,8 +3398,8 @@
 
   /* ============ 初始化 ============ */
   function init() {
-    // 界面主题（要尽早，避免闪一下默认色）
-    applyTheme(currentPrefs().theme);
+    // 界面主题与风格（要尽早，避免闪一下默认配色）
+    applyAppearance();
 
     // 导航
     $$('.nav-item').forEach(function (b) {
