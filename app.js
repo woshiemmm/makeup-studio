@@ -292,7 +292,8 @@
           (isSel ? '✓ 已选择 · 参考与教程' : '👁 参考与教程') +
         '</button>' +
         '</div>';
-      card.style.animationDelay = (i * 55) + 'ms';
+      /* 入场动画错开，但封顶 —— 妆容多了以后不能第 40 张等 2 秒才出现 */
+      card.style.animationDelay = (Math.min(i, 11) * 45) + 'ms';
       i++;
       card.addEventListener('click', function (e) {
         if (e.target.closest('.btn-preview')) return;   // 点预览不进入教学

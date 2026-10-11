@@ -268,8 +268,9 @@ window.VISION = (function () {
     sweet:     { sat: 0.05, bias: 3 },             // 粉调最饱和的甜妆
     korean:    { lum: 14, sat: -0.02, bias: 3 },   // 水光妆：最亮
     japanese:  { lum: 8, bias: 2 },
-    western:   { lum: -8, sat: 0.03, bias: 2 },
+    western:   { lum: 5, sat: -0.02, bias: 2 },    // 欧美深邃：暖棕但偏亮
     smokey:    { lum: -30, sat: 0.02, bias: 6 },   // 烟熏：暗色权重加成
+    maillard:  { lum: -8, sat: 0.03, bias: 3 },    // 美拉德：同是暖棕，但更深更浓
     chinese:   { sat: 0.06, bias: 3 },             // 正红
     mens_base: { lum: 6, sat: -0.08, bias: 3 },    // 男妆整体低饱和
     mens_bone: { lum: -4, sat: -0.04, bias: 2 },
@@ -954,6 +955,752 @@ window.VISION = (function () {
       skin: { oily: 3, dry: 1, combo: 2, normal: 3, sensitive: 1 },
       good: { acne: 3, darkCircle: 3, pore: 3, dull: 2 },
       bad: { fineLine: 3, redness: 2 }
+    },
+
+    /* ---- 新增妆容 ---- */
+    "vintage_hk": {
+      "name": "港风复古妆",
+      "note": "五官量感偏大、肤色健康的人最出彩；眉毛稀疏或唇形很薄的人需要先把眉形和唇线补齐，否则撑不起浓眉红唇的反差。",
+      "undertone": {
+        "cool": 2,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 2,
+        "light": 3,
+        "medium": 3,
+        "deep": 3
+      },
+      "skin": {
+        "oily": 2,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 2
+      },
+      "good": {
+        "dull": 3,
+        "darkCircle": 2
+      },
+      "bad": {
+        "fineLine": 2,
+        "pore": 2
+      }
+    },
+
+    "thai": {
+      "name": "泰妆",
+      "note": "骨相清晰、五官浓的人最能撑住这款妆；脸型偏圆或五官较平的人要把修容面积缩小三成，否则容易显脏。",
+      "undertone": {
+        "cool": 2,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 2,
+        "light": 3,
+        "medium": 3,
+        "deep": 3
+      },
+      "skin": {
+        "oily": 3,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 2
+      },
+      "good": {
+        "darkCircle": 3,
+        "dull": 2,
+        "pore": 2
+      },
+      "bad": {
+        "fineLine": 2
+      }
+    },
+
+    "french": {
+      "name": "法式优雅妆",
+      "note": "皮肤底子好、五官干净的人最省力；痘印和泛红明显时要把遮瑕做局部加强，否则不遮瑕会变成没画好。",
+      "undertone": {
+        "cool": 3,
+        "warm": 2,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 2,
+        "deep": 2
+      },
+      "skin": {
+        "oily": 3,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 2
+      },
+      "good": {
+        "dull": 2,
+        "pore": 1
+      },
+      "bad": {
+        "acne": 2,
+        "redness": 2
+      }
+    },
+
+    "abg": {
+      "name": "亚裔辣妹妆",
+      "note": "面部骨相清晰、能接受深色修容的人效果最好；脸小或五官柔和的人把修容和唇形量感各减三成会更协调。",
+      "undertone": {
+        "cool": 2,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 1,
+        "light": 2,
+        "medium": 3,
+        "deep": 3
+      },
+      "skin": {
+        "oily": 3,
+        "dry": 1,
+        "combo": 3,
+        "normal": 2,
+        "sensitive": 2
+      },
+      "good": {
+        "darkCircle": 3,
+        "dull": 2,
+        "pore": 2,
+        "redness": 2
+      },
+      "bad": {
+        "fineLine": 2
+      }
+    },
+
+    "pure_desire": {
+      "name": "纯欲妆",
+      "note": "适合五官柔和、皮肤较细腻的人；油皮和毛孔明显的人要先做控油和毛孔修饰，水光底会把这两点放大。",
+      "undertone": {
+        "cool": 3,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 2,
+        "deep": 2
+      },
+      "skin": {
+        "oily": 1,
+        "dry": 3,
+        "combo": 2,
+        "normal": 3,
+        "sensitive": 3
+      },
+      "good": {
+        "dull": 2
+      },
+      "bad": {
+        "acne": 2,
+        "pore": 2,
+        "redness": 2,
+        "fineLine": 1
+      }
+    },
+
+    "white_water": {
+      "name": "白开水妆",
+      "note": "皮肤状态稳定、肤色均匀的人最适合；正处在爆痘或严重泛红期时会明显遮不住，建议先修护再画。",
+      "undertone": {
+        "cool": 3,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 2,
+        "deep": 2
+      },
+      "skin": {
+        "oily": 2,
+        "dry": 3,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 3
+      },
+      "good": {
+        "darkCircle": 3,
+        "acne": 2,
+        "redness": 2
+      },
+      "bad": {
+        "dull": 2,
+        "fineLine": 1
+      }
+    },
+
+    "milk_tea": {
+      "name": "奶茶妆",
+      "note": "几乎没有门槛的日常妆，冷暖肤色都能用，只要底妆别选太白的色号。",
+      "undertone": {
+        "cool": 2,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 2,
+        "light": 3,
+        "medium": 3,
+        "deep": 3
+      },
+      "skin": {
+        "oily": 2,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 2
+      },
+      "good": {
+        "dull": 2,
+        "darkCircle": 2
+      },
+      "bad": {
+        "fineLine": 2
+      }
+    },
+
+    "y2k": {
+      "name": "Y2K 千禧妆",
+      "note": "适合五官立体、能驾驭高对比冷色的人；肤色偏冷或中性最好，偏黄要加重腮红和唇色补血色。",
+      "undertone": {
+        "cool": 3,
+        "warm": 1,
+        "neutral": 2
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 2,
+        "deep": 2
+      },
+      "skin": {
+        "oily": 2,
+        "dry": 1,
+        "combo": 2,
+        "normal": 3,
+        "sensitive": 1
+      },
+      "good": {},
+      "bad": {
+        "fineLine": 2,
+        "pore": 2
+      }
+    },
+
+    "barbie": {
+      "name": "芭比妆",
+      "note": "适合喜欢高调甜系风格、能接受底妆偏白的人；肤色偏黄建议挑带暖调的粉，避免发紫发灰。",
+      "undertone": {
+        "cool": 3,
+        "warm": 2,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 2,
+        "deep": 1
+      },
+      "skin": {
+        "oily": 2,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 2
+      },
+      "good": {
+        "dull": 2,
+        "darkCircle": 2
+      },
+      "bad": {
+        "redness": 2,
+        "acne": 2
+      }
+    },
+
+    "maillard": {
+      "name": "美拉德妆",
+      "note": "秋冬和暖调底色的最佳搭档；肤色偏冷可以选偏红一点的棕，避免整张脸发黄发土。",
+      "undertone": {
+        "cool": 1,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 2,
+        "light": 3,
+        "medium": 3,
+        "deep": 3
+      },
+      "skin": {
+        "oily": 2,
+        "dry": 3,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 2
+      },
+      "good": {
+        "dull": 3
+      },
+      "bad": {
+        "fineLine": 3
+      }
+    },
+
+    "peach": {
+      "name": "蜜桃妆",
+      "note": "适合肤色偏暖、气色容易显疲惫的人；冷白皮也能用，但腮红要挑偏粉的蜜桃色。",
+      "undertone": {
+        "cool": 2,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 2,
+        "light": 3,
+        "medium": 3,
+        "deep": 2
+      },
+      "skin": {
+        "oily": 2,
+        "dry": 3,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 2
+      },
+      "good": {
+        "dull": 3,
+        "darkCircle": 2
+      },
+      "bad": {
+        "acne": 2
+      }
+    },
+
+    "sakura": {
+      "name": "樱花妆",
+      "note": "适合肤色偏白清透、喜欢甜系淡妆的人；肤色偏深建议把粉色选深一档，否则容易发灰。",
+      "undertone": {
+        "cool": 3,
+        "warm": 1,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 2,
+        "deep": 1
+      },
+      "skin": {
+        "oily": 2,
+        "dry": 3,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 3
+      },
+      "good": {
+        "dull": 2,
+        "darkCircle": 2
+      },
+      "bad": {
+        "redness": 2
+      }
+    },
+
+    "bridal": {
+      "name": "新娘妆",
+      "note": "适合愿意提前试妆、能接受妆感比日常浓一档的准新娘；敏感肌和大面积痘肌要预留更多遮瑕与定妆时间",
+      "undertone": {
+        "cool": 3,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 3,
+        "deep": 2
+      },
+      "skin": {
+        "oily": 3,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 1
+      },
+      "good": {
+        "acne": 3,
+        "darkCircle": 3,
+        "dull": 2
+      },
+      "bad": {
+        "fineLine": 3,
+        "pore": 1
+      }
+    },
+
+    "photo_id": {
+      "name": "证件照妆",
+      "note": "几乎适合所有肤色和肤质，尤其适合需要频繁办证件的上班族；难点不在技术，而在克制",
+      "undertone": {
+        "cool": 3,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 3,
+        "deep": 2
+      },
+      "skin": {
+        "oily": 3,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 2
+      },
+      "good": {
+        "darkCircle": 3,
+        "dull": 2,
+        "redness": 2
+      },
+      "bad": {
+        "fineLine": 2
+      }
+    },
+
+    "party": {
+      "name": "夜店蹦迪妆",
+      "note": "适合油皮、混油皮和敢于尝试浓妆的人；干皮要先做好保湿，否则闪片和亮片胶容易卡在起皮处",
+      "undertone": {
+        "cool": 3,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 3,
+        "deep": 3
+      },
+      "skin": {
+        "oily": 3,
+        "dry": 1,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 1
+      },
+      "good": {
+        "dull": 3,
+        "darkCircle": 2
+      },
+      "bad": {
+        "pore": 2,
+        "fineLine": 2
+      }
+    },
+
+    "graduation": {
+      "name": "毕业照妆",
+      "note": "几乎适合所有人，尤其是第一次拍正式照片的学生党；技术门槛低，重点全在克制的浓度上",
+      "undertone": {
+        "cool": 3,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 3,
+        "deep": 2
+      },
+      "skin": {
+        "oily": 2,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 2
+      },
+      "good": {
+        "dull": 3,
+        "darkCircle": 2
+      },
+      "bad": {
+        "acne": 2,
+        "pore": 2
+      }
+    },
+
+    "tang": {
+      "name": "唐风妆造",
+      "note": "适合面部留白较多、五官偏平、不怕浓妆的人，也适合想拍唐风写真的汉服爱好者；面部泛红明显的人要先压红再上胭脂",
+      "undertone": {
+        "cool": 2,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 3,
+        "deep": 2
+      },
+      "skin": {
+        "oily": 2,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 1
+      },
+      "good": {
+        "dull": 3,
+        "darkCircle": 2
+      },
+      "bad": {
+        "redness": 3,
+        "acne": 2
+      }
+    },
+
+    "song": {
+      "name": "宋制清雅妆",
+      "note": "适合五官秀气、气质偏安静的人，也适合想拍宋制写真的汉服爱好者；肤色较深的人要靠提亮和素净配色做整体协调",
+      "undertone": {
+        "cool": 3,
+        "warm": 2,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 2,
+        "deep": 1
+      },
+      "skin": {
+        "oily": 3,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 2
+      },
+      "good": {
+        "dull": 2,
+        "redness": 2
+      },
+      "bad": {
+        "acne": 3,
+        "pore": 3
+      }
+    },
+
+    "opera": {
+      "name": "戏曲妆",
+      "note": "适合愿意花四十分钟以上做完整造型、并且有舞台或拍摄场合的人；日常通勤完全不合适。",
+      "undertone": {
+        "cool": 3,
+        "warm": 2,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 3,
+        "deep": 2
+      },
+      "skin": {
+        "oily": 3,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 1
+      },
+      "good": {
+        "redness": 3,
+        "darkCircle": 3,
+        "dull": 3
+      },
+      "bad": {
+        "acne": 1,
+        "pore": 1,
+        "fineLine": 1
+      }
+    },
+
+    "mens_work": {
+      "name": "男生职场妆",
+      "note": "适合需要在职场里显得精神、又不想被看出化妆的男生；皮肤大面积爆痘时先控痘再上妆。",
+      "undertone": {
+        "cool": 3,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 3,
+        "deep": 3
+      },
+      "skin": {
+        "oily": 3,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 3
+      },
+      "good": {
+        "acne": 3,
+        "redness": 3,
+        "darkCircle": 3,
+        "dull": 2
+      },
+      "bad": {}
+    },
+
+    "mens_wedding": {
+      "name": "男生婚礼妆",
+      "note": "适合婚礼当天要拍照超过八小时的新郎；如果流程里会频繁擦汗，全套必须换防水系列。",
+      "undertone": {
+        "cool": 3,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 3,
+        "deep": 3
+      },
+      "skin": {
+        "oily": 3,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 2
+      },
+      "good": {
+        "redness": 3,
+        "darkCircle": 3,
+        "dull": 3,
+        "acne": 2
+      },
+      "bad": {
+        "fineLine": 1
+      }
+    },
+
+    "cos_vampire": {
+      "name": "吸血鬼妆",
+      "note": "适合本身肤色偏白或愿意用白色调色液压白的人；肤色偏深时必须靠调色液，否则苍白效果出不来。",
+      "undertone": {
+        "cool": 3,
+        "warm": 1,
+        "neutral": 2
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 2,
+        "deep": 1
+      },
+      "skin": {
+        "oily": 3,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 3
+      },
+      "good": {
+        "darkCircle": 3,
+        "dull": 3,
+        "redness": 3,
+        "pore": 2
+      },
+      "bad": {
+        "fineLine": 1
+      }
+    },
+
+    "cos_elf": {
+      "name": "精灵异族妆",
+      "note": "适合愿意用闪片和高光、能接受夸张妆感的人；对闪片或化妆胶水过敏的请先做小面积测试。",
+      "undertone": {
+        "cool": 3,
+        "warm": 3,
+        "neutral": 3
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 3,
+        "deep": 2
+      },
+      "skin": {
+        "oily": 2,
+        "dry": 3,
+        "combo": 2,
+        "normal": 3,
+        "sensitive": 2
+      },
+      "good": {
+        "dull": 3,
+        "darkCircle": 3,
+        "fineLine": 2
+      },
+      "bad": {
+        "acne": 1,
+        "pore": 1
+      }
+    },
+
+    "cos_mecha": {
+      "name": "机甲科幻妆",
+      "note": "适合喜欢线条和金属质感、五官偏立体的人；脸部骨骼不明显时，几何修容要画得比常规更明确。",
+      "undertone": {
+        "cool": 3,
+        "warm": 1,
+        "neutral": 2
+      },
+      "depth": {
+        "fair": 3,
+        "light": 3,
+        "medium": 3,
+        "deep": 2
+      },
+      "skin": {
+        "oily": 3,
+        "dry": 2,
+        "combo": 3,
+        "normal": 3,
+        "sensitive": 2
+      },
+      "good": {
+        "pore": 3,
+        "acne": 2,
+        "redness": 2,
+        "dull": 2
+      },
+      "bad": {
+        "fineLine": 1
+      }
     }
   };
 
