@@ -1313,71 +1313,223 @@
     }
   }
 
+  /* ---------- 识别结果：妆容还原报告 ---------- */
+  function restoreHtml(rs) {
+    if (!rs) return '';
+    const E = escapeHtml;
+    const dot = function (hex) { return hex ? '<i class="rs-dot" style="background:' + E(hex) + '"></i>' : ''; };
+    const hexc = function (hex) { return hex ? ' <code class="rs-hex">' + E(hex) + '</code>' : ''; };
+    const sub = function (t) { return t ? '<i class="rs-sub">' + E(t) + '</i>' : ''; };
+    const row = function (label, inner) {
+      if (!inner) return '';
+      return '<div class="rs-row"><span class="rs-label">' + label + '</span><span class="rs-val">' + inner + '</span></div>';
+    };
+    const e = rs.eye || {}, sk = rs.skin || {}, br = rs.brow || {}, ch = rs.cheek || {}, lp = rs.lip || {};
+    const shadows = (e.shadows || []).map(function (s) {
+      return '<span class="rs-shade">' + dot(s.hex) + E(s.color) + hexc(s.hex) +
+        (s.where ? '<em>' + E(s.where) + '</em>' : '') +
+        (s.texture ? '<em>' + E(s.texture) + '</em>' : '') + '</span>';
+    }).join('');
+
+    return '<div class="result-box rs-box">' +
+      '<h4>📸 这张图的妆容还原' +
+        (rs.approx ? ' <span class="rs-approx">粗略近似</span>' : '') + '</h4>' +
+      '<p class="rs-style">' + E(rs.styleName) + (rs.vibe ? ' <small>' + E(rs.vibe) + '</small>' : '') + '</p>' +
+      (rs.summary ? '<p class="rs-sum">' + E(rs.summary) + '</p>' : '') +
+      '<div class="rs-grid">' +
+        row('底妆', [sk.finish, sk.coverage, sk.shade].filter(Boolean).map(E).join(' · ') + sub(sk.detail)) +
+        row('眉毛', [br.shape, br.thickness, br.color].filter(Boolean).map(E).join(' · ') + sub(br.detail)) +
+        row('眼影', shadows) +
+        row('眼线', E(e.liner)) +
+        row('睫毛', E(e.lashes)) +
+        row('眼部其他', E(e.extra)) +
+        row('腮红', (ch.color ? dot(ch.hex) + E(ch.color) + hexc(ch.hex) : '') +
+          (ch.where ? '<em class="rs-pos">' + E(ch.where) + '</em>' : '') + sub(ch.how)) +
+        row('修容高光', E(rs.contour)) +
+        row('唇妆', (lp.color ? dot(lp.hex) + E(lp.color) + hexc(lp.hex) : '') +
+          (lp.texture ? '<em class="rs-pos">' + E(lp.texture) + '</em>' : '') + sub(lp.shape)) +
+      '</div>' +
+      ((rs.sampled && rs.sampled.length)
+        ? '<div class="rs-sampled"><span>图上实际采样到的色调</span>' +
+            rs.sampled.map(function (s) { return '<i class="rs-tag">' + E(s.name) + ' ' + s.percent + '%</i>'; }).join('') +
+          '</div>'
+        : '') +
+    '</div>';
+  }
+
+  /* ---------- 识别结果：专属跟练步骤 ---------- */
+  function stepsHtml(steps) {
+    if (!steps || !steps.length) return '';
+    const E = escapeHtml;
+    return '<div class="result-box bs-box">' +
+      '<h4>🪞 专属跟练步骤</h4>' +
+      '<p class="hint" style="margin-top:0">这 ' + steps.length + ' 步是<b>按你这张图</b>拆出来的，不是套现成模板。' +
+        '点标题展开/收起。</p>' +
+      steps.map(function (s, i) {
+        return '<details class="bs-stage"' + (i === 0 ? ' open' : '') + '>' +
+          '<summary><span class="bs-no">' + (i + 1) + '</span>' + E(s.icon) + ' ' + E(s.title) +
+            '<i>' + s.items.length + ' 个要点</i></summary>' +
+          (s.intro ? '<p class="bs-intro">' + E(s.intro) + '</p>' : '') +
+          s.items.map(function (it, k) {
+            return '<div class="bs-item"><span class="bs-k">' + (k + 1) + '</span>' +
+              '<div class="bs-body"><b>' + E(it.name) + '</b><p>' + E(it.desc) + '</p>' +
+              (it.tip ? '<div class="tip">' + E(it.tip) + '</div>' : '') + '</div></div>';
+          }).join('') +
+        '</details>';
+      }).join('') +
+    '</div>';
+  }
+
+  /* ---------- 识别结果：全网找同款 ---------- */
+  function searchHtml(r) {
+    const qs = (r.queries || []).slice(0, 5);
+    if (!qs.length) return '';
+    const q0 = qs[0];
+    const direct = function (label, url) {
+      return '<a class="srch-d" href="' + url + '" target="_blank" rel="noopener">' + label + '</a>';
+    };
+    const isFile = (typeof location !== 'undefined' && location.protocol === 'file:');
+    return '<div class="result-box srch-box">' +
+      '<h4>🔎 全网找同款</h4>' +
+      '<p class="hint" style="margin-top:0">' +
+        (isFile
+          ? '你目前是直接打开本地文件，服务器搜索用不了。用下面的<b>直达链接</b>去搜一样方便。'
+          : '点按钮由<b>服务器实际去网上抓</b>（不是跳转到搜索页），抓不到还会自动给你直达链接。') +
+      '</p>' +
+      '<div class="srch-chips">' +
+        qs.map(function (q, i) {
+          return '<button class="srch-chip' + (i === 0 ? ' active' : '') + '" data-q="' + escapeHtml(q) +
+            '" type="button">' + escapeHtml(q) + '</button>';
+        }).join('') +
+      '</div>' +
+      '<div class="srch-actions">' +
+        (isFile ? '' : '<button class="btn primary" id="btn-do-search" type="button">🔎 抓取真实结果</button>') +
+        '<span class="srch-direct"><span>直达：</span>' +
+          direct('B站', 'https://search.bilibili.com/all?keyword=' + encodeURIComponent(q0)) +
+          direct('小红书', 'https://www.xiaohongshu.com/search_result?keyword=' + encodeURIComponent(q0)) +
+          direct('抖音', 'https://www.douyin.com/search/' + encodeURIComponent(q0)) +
+          direct('Google', 'https://www.google.com/search?q=' + encodeURIComponent(q0)) +
+        '</span>' +
+      '</div>' +
+      '<div class="srch-res" id="srch-res"></div>' +
+    '</div>';
+  }
+
+  async function runSearch(queries, box, btn) {
+    if (!box) return;
+    box.innerHTML = '<p class="hint">正在搜索…（每个词一次请求，可能要几秒）</p>';
+    if (btn) { btn.disabled = true; }
+    const cfg = (VISION.loadConfig ? VISION.loadConfig() : {}) || {};
+    const headers = {};
+    if (cfg.accessCode) headers['x-access-code'] = cfg.accessCode;
+
+    const all = [], seen = {}, failed = [];
+    try {
+      for (let i = 0; i < queries.length; i++) {
+        if (all.length >= 12) break;
+        const q = queries[i];
+        let j = null;
+        try {
+          const resp = await fetch('/api/search?n=5&q=' + encodeURIComponent(q), { headers: headers });
+          j = await resp.json();
+        } catch (e) { j = null; }
+        if (j && j.results && j.results.length) {
+          j.results.forEach(function (x) {
+            if (!x.url || seen[x.url]) return;
+            seen[x.url] = 1;
+            all.push({ q: q, title: x.title, url: x.url, snippet: x.snippet || '', src: x.src, meta: x.meta || '' });
+          });
+        } else {
+          failed.push(q);
+        }
+      }
+    } finally {
+      if (btn) { btn.disabled = false; }
+    }
+
+    if (!all.length) {
+      box.innerHTML = '<p class="hint">没抓到结果（搜索源可能被限流或未配置）。' +
+        '用上面的「直达」链接去搜，效果一样。</p>';
+      return;
+    }
+    /* B 站视频排前面，其余按抓到顺序 */
+    all.sort(function (a, b) { return (a.src === 'bilibili' ? 0 : 1) - (b.src === 'bilibili' ? 0 : 1); });
+    const nBili = all.filter(function (x) { return x.src === 'bilibili'; }).length;
+    box.innerHTML = '<p class="hint" style="margin:0 0 8px">共抓到 <b>' + all.length + '</b> 条' +
+      (nBili ? '（其中 B 站视频 ' + nBili + ' 条）' : '') +
+      (failed.length ? '，' + failed.length + ' 个词没抓到' : '') + '：</p>' +
+      '<div class="srch-list">' + all.slice(0, 12).map(function (x) {
+        const isBili = x.src === 'bilibili';
+        return '<a class="srch-item' + (isBili ? ' is-bili' : '') + '" href="' + escapeHtml(x.url) +
+          '" target="_blank" rel="noopener">' +
+          '<b>' + (isBili ? '<span class="srch-tag">B站</span>' : '') + escapeHtml(x.title) + '</b>' +
+          (x.meta ? '<em>' + escapeHtml(x.meta) + '</em>' : '') +
+          (x.snippet ? '<span>' + escapeHtml(x.snippet.slice(0, 130)) + '</span>' : '') +
+          '<i>' + escapeHtml(x.q) + '</i>' +
+        '</a>';
+      }).join('') + '</div>';
+  }
+
   function renderRecognizeResult(r) {
     const look = D.looks.find(function (l) { return l.id === r.lookId; }) || D.looks[0];
     const box = $('#recognize-result');
     box.classList.remove('hidden');
-    box.innerHTML = '';
 
+    const E = escapeHtml;
     const isApi = r.mode === 'api';
-
-    const main = el('div', 'result-box');
     const AUD = { f: '♀ 偏女性', m: '♂ 偏男性', any: '⚥ 男女皆可' };
+    const aud = function (l) {
+      return '<span class="lt-aud lt-' + (l.audience || 'any') + '">' + (AUD[l.audience] || '') + '</span>';
+    };
+    const parts = [];
+
+    /* ① 还原报告 —— 本次的重点，放最上面 */
+    if (r.restore) {
+      parts.push(restoreHtml(r.restore));
+    } else {
+      parts.push('<div class="result-box"><h4>🔍 识别结果：' + E(look.name) + ' ' + aud(look) + '</h4>' +
+        '<p class="sub">' + E(look.tagline) + '</p></div>');
+    }
+
+    /* ② 专属跟练步骤 */
+    parts.push(stepsHtml(r.steps));
+
+    /* ③ 全网找同款 */
+    parts.push(searchHtml(r));
+
+    /* ④ 参考：最接近的现成妆容 */
     const sceneNames = (look.scene || []).map(function (s) {
       const sc = (D.scenes || []).find(function (x) { return x.id === s; });
       return sc ? sc.icon + sc.name : s;
     });
-    main.innerHTML =
-      '<h4>🔍 识别结果：' + escapeHtml(look.name) +
-        ' <span class="lt-aud lt-' + (look.audience || 'any') + '">' + (AUD[look.audience] || '') + '</span>' +
-        '</h4>' +
-      '<p class="sub">' + escapeHtml(look.tagline) + '（' + (isApi ? 'AI 视觉识别' : '本地配色分析演示模式') + '）</p>' +
-      (sceneNames.length ? '<p class="sub" style="margin-top:-4px">适合场合：' + escapeHtml(sceneNames.join(' · ')) + '</p>' : '') +
+    parts.push('<div class="result-box ref-box">' +
+      '<h4>📚 参考：最接近的现成妆容</h4>' +
+      '<p class="hint" style="margin-top:0">还原报告是照你这张图写的；下面这款是站内已有的、最接近的成套教学，' +
+        '想按现成流程学就用它。</p>' +
+      '<p class="ref-name">' + E(look.name) + ' ' + aud(look) + '</p>' +
+      '<p class="sub">' + E(look.tagline) + '（' + (isApi ? 'AI 视觉识别' : '本地配色分析演示模式') + '）</p>' +
+      (sceneNames.length ? '<p class="sub" style="margin-top:-4px">适合场合：' + E(sceneNames.join(' · ')) + '</p>' : '') +
       '<div class="meter"><i style="width:' + Math.round(r.confidence * 100) + '%"></i></div>' +
-      '<p class="confidence">' +
-        (isApi ? 'AI 匹配度（模型从 ' + D.looks.length + ' 种风格中选出）：' : '本地匹配置信度：') +
-        Math.round(r.confidence * 100) + '%</p>' +
-      '<div class="tag-row">' + look.palette.map(function (c) { return '<span class="tag-chip" style="background:' + c + '22;border:1px solid ' + c + ';color:' + c + '">' + c + '</span>'; }).join('') + '</div>';
-    // 本次花费，方便判断成本
+      '<p class="confidence">相似度 ' + Math.round(r.confidence * 100) + '%</p>' +
+      '<div class="tag-row">' + look.palette.map(function (c) {
+        return '<span class="tag-chip" style="background:' + c + '22;border:1px solid ' + c + ';color:' + c + '">' + c + '</span>';
+      }).join('') + '</div></div>');
+
+    /* 花费 / 缓存 */
     if (r.usage) {
       const u = r.usage;
-      main.appendChild(el('p', 'hint', '💰 本次消耗 ' + (u.total_tokens != null ? u.total_tokens : '?') + ' tokens' +
+      parts.push('<p class="hint">💰 本次消耗 ' + (u.total_tokens != null ? u.total_tokens : '?') + ' tokens' +
         (u.prompt_tokens != null ? '（输入 ' + u.prompt_tokens + ' / 输出 ' + (u.completion_tokens || 0) + '）' : '') +
-        (r.sentBytes ? ' · 上传图片约 ' + Math.round(r.sentBytes / 1024) + ' KB' : '')));
+        (r.sentBytes ? ' · 上传图片约 ' + Math.round(r.sentBytes / 1024) + ' KB' : '') + '</p>');
     } else if (r.cached) {
-      main.appendChild(el('p', 'hint', '⚡ 来自本地缓存，本次未调用接口（花费 0）'));
+      parts.push('<p class="hint">⚡ 来自本地缓存，本次未调用接口（花费 0）</p>');
     }
-    box.appendChild(main);
 
-    const cols = el('div', 'recog-cols');
-
-    const c1 = el('div', 'result-box');
-    c1.innerHTML = '<h4>🎨 配色分析' +
-      (isApi ? ' <small style="font-weight:400;font-size:12px;color:var(--ink-faint)">本地像素采样</small>' : '') +
-      '</h4><p>' + escapeHtml(r.reason || '未获取到配色信息') + '</p>';
-    cols.appendChild(c1);
-
-    const c2 = el('div', 'result-box');
-    const tweak = look.tweaks || {};
-    const eyeNotes = (tweak.eye && tweak.eye.notes) || [];
-    const lipNotes = (tweak.lip && tweak.lip.notes) || [];
-    const baseNotes = (tweak.base && (tweak.base.notes || tweak.base.intro)) || [];
-    c2.innerHTML =
-      '<h4>💄 妆容特点</h4>' +
-      '<p class="section-label">底妆</p><p>' + (baseNotes.length ? escapeHtml(baseNotes.join('；')) : look.desc) + '</p>' +
-      '<p class="section-label">眼妆</p><p>' + (eyeNotes.length ? escapeHtml(eyeNotes.join('；')) : '参考「眼妆」步骤，结合本妆配色。') + '</p>' +
-      '<p class="section-label">唇妆</p><p>' + (lipNotes.length ? escapeHtml(lipNotes.join('；')) : '参考「唇妆」步骤，结合本妆配色。') + '</p>';
-    cols.appendChild(c2);
-
-    box.appendChild(cols);
-
-    /* 候选排名：本地分析的完整排序，识别不准时用户能看到更接近的备选 */
-    const ranked = (r.analysis && r.ranked) || (r.ranked || null);
+    /* 候选排名 */
+    const ranked = r.ranked || null;
     if (ranked && ranked.length > 1) {
-      const alt = el('div', 'result-box');
-      alt.innerHTML =
-        '<h4>📊 候选排名</h4>' +
-        '<p class="hint" style="margin-top:0">按配色相似度排序。识别不准时可以从这里手动选更像的一款。</p>' +
+      parts.push('<div class="result-box"><h4>📊 配色候选排名</h4>' +
+        '<p class="hint" style="margin-top:0">按配色相似度排序，仅供交叉参考。</p>' +
         '<div class="rank-list">' +
           ranked.map(function (x, i) {
             const l2 = D.looks.find(function (y) { return y.id === x.lookId; });
@@ -1385,48 +1537,67 @@
             const pct = Math.max(4, Math.min(100, Math.round(x.score)));
             return '<button class="rank-item' + (i === 0 ? ' top' : '') + '" data-rank-look="' + x.lookId + '" type="button">' +
               '<span class="rk-no">' + (i + 1) + '</span>' +
-              '<span class="rk-name">' + escapeHtml(l2.name) +
-                '<i class="lt-aud lt-' + (l2.audience || 'any') + '">' + (AUD[l2.audience] || '').replace(/^[♀♂⚥]\s*/, '') + '</i>' +
-              '</span>' +
+              '<span class="rk-name">' + E(l2.name) +
+                '<i class="lt-aud lt-' + (l2.audience || 'any') + '">' +
+                (AUD[l2.audience] || '').replace(/^[♀♂⚥]\s*/, '') + '</i></span>' +
               '<span class="rk-bar"><i style="width:' + pct + '%"></i></span>' +
-              '<span class="rk-score">' + pct + '</span>' +
-            '</button>';
+              '<span class="rk-score">' + pct + '</span></button>';
           }).join('') +
-        '</div>';
-      alt.querySelectorAll('[data-rank-look]').forEach(function (b) {
-        b.addEventListener('click', function () {
-          selectLook(b.dataset.rankLook);
-          go('teach');
-          toast('已切换到「' + (D.looks.find(function (y) { return y.id === b.dataset.rankLook; }) || {}).name + '」', { type: 'ok' });
-        });
-      });
-      box.appendChild(alt);
+        '</div></div>');
     }
 
-    if (r.mode === 'api' && r.apiText) {
-      const ai = el('div', 'result-box');
-      ai.innerHTML = '<h4>🤖 AI 详细分析</h4><p style="white-space:pre-wrap">' + escapeHtml(r.apiText) + '</p>';
-      box.appendChild(ai);
+    if (r.apiText) {
+      parts.push('<div class="result-box"><details class="ai-raw"><summary>🤖 查看 AI 原始回复</summary>' +
+        '<p style="white-space:pre-wrap">' + E(r.apiText) + '</p></details></div>');
     }
-
     if (r.needCode) {
-      const note = el('div', 'result-box');
-      note.innerHTML = '<h4>ℹ️ 当前使用本地配色分析</h4><p>本站 AI 识别已开启访问口令保护。' +
-        '若你持有口令，可在「设置 → 访问口令」中填写后重试，获得更精准的识别结果。</p>';
-      box.appendChild(note);
+      parts.push('<div class="result-box"><h4>ℹ️ 当前使用本地配色分析</h4>' +
+        '<p>本站 AI 识别已开启访问口令保护。若你持有口令，可在「设置 → 访问口令」中填写后重试，' +
+        '就能拿到逐处还原的结果。</p></div>');
     }
-
     if (r.error) {
-      const err = el('div', 'result-box');
-      err.innerHTML = '<h4>⚠️ AI 识别失败，已回退为本地配色分析</h4><p>' + escapeHtml(r.error) + '</p>';
-      box.appendChild(err);
+      parts.push('<div class="result-box"><h4>⚠️ AI 识别失败，已回退为本地配色分析</h4>' +
+        '<p>' + E(r.error) + '</p></div>');
     }
 
-    const apply = el('div', 'apply-box');
-    const btn = el('button', 'btn primary', '🎨 去学习这个妆容 →');
-    btn.addEventListener('click', function () { selectLook(look.id); });   // selectLook 自己会切视图并写路由
-    apply.appendChild(btn);
-    box.appendChild(apply);
+    parts.push('<div class="apply-box">' +
+      '<button class="btn primary" id="btn-go-look" type="button">🎨 去学习「' + E(look.name) + '」的完整教学 →</button>' +
+      '</div>');
+
+    box.innerHTML = parts.join('');
+
+    /* ---- 事件绑定 ---- */
+    const goBtn = $('#btn-go-look');
+    if (goBtn) goBtn.addEventListener('click', function () { selectLook(look.id); });
+
+    box.querySelectorAll('[data-rank-look]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        selectLook(b.dataset.rankLook);
+        go('teach');
+        toast('已切换到「' + (D.looks.find(function (y) { return y.id === b.dataset.rankLook; }) || {}).name + '」', { type: 'ok' });
+      });
+    });
+
+    /* 搜索：选词 + 抓取 */
+    const chips = box.querySelectorAll('.srch-chip');
+    const doBtn = $('#btn-do-search');
+    const resBox = $('#srch-res');
+    let chosen = (r.queries || [])[0] || '';
+    chips.forEach(function (c) {
+      c.addEventListener('click', function () {
+        chips.forEach(function (x) { x.classList.remove('active'); });
+        c.classList.add('active');
+        chosen = c.dataset.q;
+        if (resBox) resBox.innerHTML = '';
+      });
+    });
+    if (doBtn) {
+      doBtn.addEventListener('click', function () {
+        const all = (r.queries || []).slice(0, 3);
+        const qs = chosen ? [chosen].concat(all.filter(function (x) { return x !== chosen; })) : all;
+        runSearch(qs, resBox, doBtn);
+      });
+    }
   }
 
   /* ============ 肤质分析 ============ */

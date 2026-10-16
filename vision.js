@@ -90,8 +90,15 @@ window.VISION = (function () {
   const CACHE_MAX = 30;
 
   function hashString(s) {
+    s = String(s == null ? '' : s);
+    /* 逐字符哈希，不做抽样。
+     * 以前是「每 97 个字符取一个」，两个问题：
+     *   ① 短字符串只会取到第一个字符 → 不同图片算同一个键
+     *   ② 长 data URL 里差异落在采样点之间也会碰撞
+     * 缓存键一旦撞上，就会把别人的识别结果展示给当前用户。
+     * 逐字符走一遍 4 万字符不到 1ms，这点开销换正确性是值得的。 */
     let h = 5381;
-    for (let i = 0; i < s.length; i += 97) {          // 抽样，够用且快
+    for (let i = 0; i < s.length; i++) {
       h = ((h << 5) + h + s.charCodeAt(i)) | 0;
     }
     return (h >>> 0).toString(36) + '_' + s.length;
@@ -134,7 +141,9 @@ window.VISION = (function () {
     const canvas = document.createElement('canvas');
     canvas.width = size; canvas.height = size;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(img, 0, 0, size, size);
+    if (!ctx) return null;                       // 极端情况下浏览器不给 2D 上下文
+    try { ctx.drawImage(img, 0, 0, size, size); }
+    catch (e) { return null; }                   // 图片没加载完 / 跨域污染
     let data;
     try { data = ctx.getImageData(0, 0, size, size).data; }
     catch (e) { return null; }
@@ -581,16 +590,19 @@ window.VISION = (function () {
     catch (e3) { throw new Error('接口未返回合法 JSON：' + String(text).slice(0, 200)); }
   }
 
-  async function callVisionAPI(imageDataURL, prompt, cfg) {
+  async function callVisionAPI(imageDataURL, prompt, cfg, opts) {
     if (!cfg) cfg = loadConfig();
+    opts = opts || {};
     const provider = PROVIDERS[cfg.provider] || PROVIDERS.custom;
+    const maxOut = opts.maxTokens || cfg.maxTokens || 800;
 
     if (provider.type === 'gemini') {
       const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
         encodeURIComponent(cfg.model) + ':generateContent?key=' + encodeURIComponent(cfg.key);
       const mime = (imageDataURL.match(/^data:([^;]+);/) || [])[1] || 'image/jpeg';
       const json = await postJSON(url, { 'Content-Type': 'application/json' }, {
-        contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: imageDataURL.split(',')[1] } }] }]
+        contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: imageDataURL.split(',')[1] } }] }],
+        generationConfig: { maxOutputTokens: maxOut, temperature: 0.3 }
       });
       try {
         return {
@@ -610,7 +622,7 @@ window.VISION = (function () {
         { type: 'text', text: prompt },
         { type: 'image_url', image_url: imgPayload }
       ]}],
-      max_tokens: cfg.maxTokens || 800, temperature: 0.3
+      max_tokens: maxOut, temperature: 0.3
     });
     try {
       return {
@@ -685,14 +697,184 @@ window.VISION = (function () {
 
   /* ============ 妆容识别（整合 API + 演示） ============ */
   // 返回 { mode: 'api'|'demo', lookId, confidence, reason, apiText, analysis }
+  /* ============================================================
+   * 妆容还原：把一张图拆解到「能照着复刻」的程度
+   * ------------------------------------------------------------
+   * 和以前最大的区别：不再只是「判断属于哪一类」，
+   * 而是逐处给出颜色、位置、形状、质地、层次，并据此生成
+   * 一套只属于这张图的跟练步骤。
+   * ============================================================ */
+
+  /* 从模型回复里抠出 JSON —— 容忍 ```json 包裹、前后废话、字符串里的括号 */
+  function extractJSON(text) {
+    if (!text) return null;
+    let s = String(text).trim();
+    s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    try { return JSON.parse(s); } catch (e) { /* 继续抠 */ }
+    const start = s.indexOf('{');
+    if (start < 0) return null;
+    let depth = 0, inStr = false, esc = false;
+    for (let i = start; i < s.length; i++) {
+      const c = s[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === '\\') esc = true;
+        else if (c === '"') inStr = false;
+        continue;
+      }
+      if (c === '"') inStr = true;
+      else if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) {
+          try { return JSON.parse(s.slice(start, i + 1)); } catch (e) { return null; }
+        }
+      }
+    }
+    return null;
+  }
+
+  function str(v, def) { return (typeof v === 'string' && v.trim()) ? v.trim() : (def || ''); }
+  function arr(v) { return Array.isArray(v) ? v : []; }
+
+  /* 把模型给的还原结果规整成固定结构，缺字段也不会让界面崩 */
+  function normalizeRestore(raw, analysis) {
+    if (!raw) return null;
+    const o = raw.restore || raw;
+    const rgbOf = function (x) {
+      const m = String(x || '').match(/#?([0-9a-fA-F]{6})/);
+      return m ? '#' + m[1].toLowerCase() : '';
+    };
+    const shadows = arr(o.eye && o.eye.shadows).map(function (s) {
+      return {
+        color: str(s.color, '未说明'),
+        hex: rgbOf(s.hex),
+        where: str(s.where),
+        texture: str(s.texture)
+      };
+    }).slice(0, 5);
+
+    return {
+      styleName: str(o.styleName, '未命名妆容'),
+      summary: str(o.summary),
+      vibe: str(o.vibe),
+      skin: {
+        finish: str(o.skin && o.skin.finish), coverage: str(o.skin && o.skin.coverage),
+        shade: str(o.skin && o.skin.shade), detail: str(o.skin && o.skin.detail)
+      },
+      brow: {
+        shape: str(o.brow && o.brow.shape), thickness: str(o.brow && o.brow.thickness),
+        color: str(o.brow && o.brow.color), detail: str(o.brow && o.brow.detail)
+      },
+      eye: {
+        shadows: shadows,
+        liner: str(o.eye && o.eye.liner),
+        lashes: str(o.eye && o.eye.lashes),
+        extra: str(o.eye && o.eye.extra)
+      },
+      cheek: {
+        color: str(o.cheek && o.cheek.color), hex: rgbOf(o.cheek && o.cheek.hex),
+        where: str(o.cheek && o.cheek.where), how: str(o.cheek && o.cheek.how)
+      },
+      contour: str(o.contour),
+      lip: {
+        color: str(o.lip && o.lip.color), hex: rgbOf(o.lip && o.lip.hex),
+        texture: str(o.lip && o.lip.texture), shape: str(o.lip && o.lip.shape)
+      },
+      /* 图上真实采样到的像素色（本地算的，不是模型猜的） */
+      sampled: analysis ? sampledSwatches(analysis) : []
+    };
+  }
+
+  /* 从像素分析里挑几个代表性颜色，作为「实际采样」和模型描述互相印证 */
+  function sampledSwatches(a) {
+    if (!a || !a.buckets) return [];
+    const name = { red: '红', orange: '橘', yellow: '黄', green: '绿', blue: '蓝', purple: '紫', pink: '粉', neutral: '中性', dark: '暗' };
+    const total = Math.max(1, Object.keys(a.buckets).reduce(function (s, k) { return s + a.buckets[k]; }, 0));
+    return Object.keys(a.buckets)
+      .filter(function (k) { return a.buckets[k] / total > 0.04; })
+      .sort(function (x, y) { return a.buckets[y] - a.buckets[x]; })
+      .slice(0, 5)
+      .map(function (k) { return { name: name[k] || k, percent: Math.round(a.buckets[k] / total * 100) }; });
+  }
+
+  /* 模型给的步骤 → 按站点既有的阶段顺序规整 */
+  function normalizeSteps(raw) {
+    const stages = (typeof window !== 'undefined' && window.MAKEUP_DATA && window.MAKEUP_DATA.stages) || [];
+    const order = stages.map(function (s) { return s.id; });
+    const byId = {};
+    stages.forEach(function (s) { byId[s.id] = s; });
+
+    return arr(raw).map(function (s) {
+      const id = str(s.stage);
+      if (order.indexOf(id) < 0) return null;
+      const items = arr(s.items).map(function (it) {
+        return { name: str(it.name, '要点'), desc: str(it.desc), tip: str(it.tip) };
+      }).filter(function (it) { return it.desc; }).slice(0, 6);
+      if (!items.length) return null;
+      const meta = byId[id] || { title: id, icon: '•' };
+      return {
+        stage: id, title: meta.title, icon: meta.icon,
+        intro: str(s.intro), items: items
+      };
+    }).filter(Boolean).sort(function (a, b) {
+      return order.indexOf(a.stage) - order.indexOf(b.stage);
+    });
+  }
+
+  /* 搜索词：模型给的不够就用还原结果自己拼，保证「全网找同款」永远有词可用 */
+  function normalizeQueries(raw, restore) {
+    let q = arr(raw).map(function (x) { return str(x); }).filter(Boolean);
+    if (q.length < 3 && restore) {
+      const bits = [];
+      if (restore.eye && restore.eye.shadows[0] && restore.eye.shadows[0].color) {
+        bits.push(restore.eye.shadows[0].color + '眼影');
+      }
+      if (restore.lip && restore.lip.color) bits.push(restore.lip.color + '唇');
+      if (restore.brow && restore.brow.shape) bits.push(restore.brow.shape);
+      if (restore.skin && restore.skin.finish) bits.push(restore.skin.finish + '底妆');
+      q = q.concat([
+        [restore.styleName, '妆容 教程'].join(' '),
+        bits.join(' ') || (restore.styleName + ' 画法'),
+        restore.vibe ? (restore.vibe + ' 妆 教程') : (restore.styleName + ' 复刻')
+      ]);
+    }
+    const out = [];
+    q.forEach(function (x) { if (x && out.indexOf(x) < 0) out.push(x); });
+    return out.slice(0, 5);
+  }
+
+  /* 没有 API Key 时：只能给配色层面的近似，把话说清楚 */
+  function demoRestore(demo, analysis) {
+    const looks = (typeof window !== 'undefined' && window.MAKEUP_DATA && window.MAKEUP_DATA.looks) || [];
+    const look = demo ? looks.find(function (l) { return l.id === demo.lookId; }) : null;
+    const sw = sampledSwatches(analysis || {});
+    const swTxt = sw.map(function (s) { return s.name + ' ' + s.percent + '%'; }).join('、');
+    return {
+      approx: true,
+      styleName: (look ? look.name : '未识别') + '（配色近似）',
+      summary: '演示模式只能用像素配色做粗判，给不出「逐处颜色与位置」。' +
+        '这张图采样到的色调占比是：' + (swTxt || '无') + '。要真正做到照着复刻，请到「设置」填 API Key。',
+      vibe: look ? look.occasion : '',
+      skin: { finish: '', coverage: '', shade: '', detail: '' },
+      brow: { shape: '', thickness: '', color: '', detail: '' },
+      eye: { shadows: [], liner: '', lashes: '', extra: '' },
+      cheek: { color: '', hex: '', where: '', how: '' },
+      contour: '',
+      lip: { color: '', hex: '', texture: '', shape: '' },
+      sampled: sw
+    };
+  }
+
   async function recognizeLook(img, cfg) {
     if (!cfg) cfg = loadConfig();
-    const demo = matchLookByColor(analyzeColors(img));
+    const analysis = analyzeColors(img);
+    const demo = matchLookByColor(analysis);
 
     const useApi = cfg.mode === 'api' || (cfg.mode === 'auto' && hasApi(cfg));
     if (useApi) {
       // 同一张图 + 同样配置 → 直接用缓存，不重复花钱
-      const cacheKey = 'rec|' + cfg.model + '|' + (cfg.detail || 'hi') + '|' + (cfg.maxImageSize || 1024) + '|' + hashString(img.src);
+      const cacheKey = 'rec2|' + cfg.model + '|' + (cfg.detail || 'hi') + '|' + (cfg.maxImageSize || 1024) + '|' + hashString(img.src);
       if (cfg.cache !== false) {
         const hit = cacheGet(cacheKey);
         if (hit) return Object.assign({}, hit, { cached: true });
@@ -700,39 +882,85 @@ window.VISION = (function () {
 
       /* 候选妆容从数据里动态取，新增妆容自动进入识别范围 */
       const allLooks = (typeof window !== 'undefined' && window.MAKEUP_DATA && window.MAKEUP_DATA.looks) || [];
+      const stages = (typeof window !== 'undefined' && window.MAKEUP_DATA && window.MAKEUP_DATA.stages) || [];
       const groupName = { female: '女妆', male: '男妆', cos: 'cos/舞台' };
       const idList = allLooks.map(function (l) {
         return l.id + '(' + l.name + '·' + (groupName[l.group] || '女妆') + ')';
       }).join('、');
+      const stageList = stages.map(function (s) { return s.id + '(' + s.title + ')'; }).join('、');
+
       const prompt =
-        '请分析这张妆容图片，判断妆容风格/类型，用中文简洁回答：\n' +
-        '1. 妆容风格名称\n' +
-        '2. 整体色调\n' +
-        '3. 眼妆、唇妆、底妆的特点\n' +
-        '4. 适合场合\n' +
-        '5. 判断这是偏女性妆容、偏男性妆容，还是中性 / cos 角色妆；请说明依据（看眉形粗细与角度、修容轻重、唇色深浅、眼妆浓淡、有无假睫毛和卧蚕）\n' +
-        '6. 从下面的列表里选一个最接近的，只回复它的英文 id：' + idList + '\n' +
+        '你是一位资深化妆师。请**逐处**拆解这张妆容照片，目标是让别人拿着你的描述能画出**一模一样**的妆，' +
+        '而不是判断它属于哪一类。\n\n' +
+        '要求：\n' +
+        '· 颜色要具体到「什么色 + 大致色值 + 深浅」，不要只写「棕色眼影」\n' +
+        '· 位置要具体到面部解剖位置（眼窝/双眼皮褶内/睫毛根部/眼尾三角区/颧骨下方/唇峰…）\n' +
+        '· 形状要具体（上扬多少度、拉长多少、眉峰在哪个位置、唇形是内收还是外扩）\n' +
+        '· 质地要写（哑光/微珠光/闪片/水光/雾面）\n' +
+        '· 层次要写（打底→加深→提亮，分别用什么、范围到哪）\n' +
+        '· 分不清的地方就写「看不清」，不要编\n\n' +
+        '**只输出一个 JSON 对象，不要任何解释文字、不要 markdown 代码块。** 结构如下：\n' +
+        '{\n' +
+        '  "styleName": "给这个妆起一个具体的名字（如「冷调玫瑰咬唇 + 微上挑眼线」）",\n' +
+        '  "summary": "一句话概括这张图的妆容特征",\n' +
+        '  "vibe": "风格归属：年代/流派/像什么风格（如 90 年代港风、日系清透、千禧 Y2K）",\n' +
+        '  "skin": { "finish": "妆效（水光/哑光/半哑光/奶油肌）", "coverage": "遮瑕度（薄/中/高）", "shade": "底色倾向（冷调偏白/暖调自然…）", "detail": "底妆具体做法" },\n' +
+        '  "brow": { "shape": "眉形", "thickness": "粗细", "color": "颜色", "detail": "画法与要点" },\n' +
+        '  "eye": {\n' +
+        '    "shadows": [ { "color": "颜色名", "hex": "#rrggbb", "where": "涂在哪里", "texture": "质地" } ],\n' +
+        '    "liner": "眼线：形状/走向/粗细/眼尾拉长多少/是否画下眼线",\n' +
+        '    "lashes": "睫毛：卷翘度、浓密度、是否假睫毛",\n' +
+        '    "extra": "卧蚕、眼头提亮、下眼影、双眼皮贴等"\n' +
+        '  },\n' +
+        '  "cheek": { "color": "颜色名", "hex": "#rrggbb", "where": "打在哪个位置", "how": "手法与浓淡" },\n' +
+        '  "contour": "修容与高光：打在哪、强度如何、有没有做鼻影/下颌线",\n' +
+        '  "lip": { "color": "颜色名", "hex": "#rrggbb", "texture": "质地", "shape": "唇形怎么画（是否缩小/外扩/咬唇/晕染）" },\n' +
+        '  "queries": ["3~5 个用于在网上搜同款教程的中文关键词，要具体，如「冷调玫瑰 咬唇妆 教程」"],\n' +
+        '  "steps": [\n' +
+        '    { "stage": "阶段id", "intro": "这一步针对这张图要做什么",\n' +
+        '      "items": [ { "name": "要点名", "desc": "具体怎么做（越具体越好）", "tip": "可选的小贴士" } ] }\n' +
+        '  ]\n' +
+        '}\n\n' +
+        'steps 的 stage 只能从这些里选：' + stageList + '。' +
+        '至少给 5 个阶段，每个阶段 2~5 个 items。\n\n' +
+        '另外：如果你能判断，请在 JSON 之外最开头单独加一行 \nLOOK=<id>\n，' +
+        'id 从下面这个最接近的预设列表里选（只为给出一个可参考的现成教学，不影响上面的还原描述）：' + idList + '\n' +
         '重要：不要默认选女妆。男妆（底妆薄、哑光、修容重、眉毛直线条、无假睫毛）和 cos 妆（眼妆夸张、假睫毛、高遮瑕）都要认真考虑。';
       try {
         // 先缩放再上传：模型内部反正会缩，原图直传纯属浪费
         const sent = prepareForAPI(img, cfg.maxImageSize || 1024, 0.85);
-        const resp = await callVisionAPI(sent, prompt, cfg);
+        const resp = await callVisionAPI(sent, prompt, cfg, { maxTokens: 3000 });
         const text = resp.text;
-        // 尝试从回复中提取 lookId（用本地颜色分析的结果给候选排个序，优先匹配更像的）
+        const parsed = extractJSON(text);
+        const restore = normalizeRestore(parsed, analysis);
+        const steps = normalizeSteps(parsed && parsed.steps);
+
+        // lookId：优先用 LOOK= 那行，其次在正文里找 id
         let lookId = null;
-        const prefer = demo && demo.ranked ? demo.ranked.map(function (r) { return r.lookId; }) : [];
-        const ids = prefer.concat(allLooks.map(function (l) { return l.id; })
-          .filter(function (id) { return prefer.indexOf(id) < 0; }));
-        for (const id of ids) {
-          const re = new RegExp('(^|[^a-z_])' + id + '([^a-z_]|$)', 'i');
-          if (re.test(text)) { lookId = id; break; }
+        const lookLine = String(text).match(/LOOK\s*=\s*([a-z_]+)/i);
+        if (lookLine) lookId = lookLine[1].toLowerCase();
+        if (!lookId || !allLooks.some(function (l) { return l.id === lookId; })) {
+          lookId = null;
+          const prefer = demo && demo.ranked ? demo.ranked.map(function (r) { return r.lookId; }) : [];
+          const ids = prefer.concat(allLooks.map(function (l) { return l.id; })
+            .filter(function (id) { return prefer.indexOf(id) < 0; }));
+          for (const id of ids) {
+            const re = new RegExp('(^|[^a-z_])' + id + '([^a-z_]|$)', 'i');
+            if (re.test(text)) { lookId = id; break; }
+          }
         }
+
         const out = {
-          mode: 'api', lookId: lookId || (demo ? demo.lookId : 'natural'),
-          confidence: lookId ? 0.85 : (demo ? demo.confidence : 0.6),
-          reason: demo ? demo.reason : '', apiText: text,
-          analysis: demo ? demo.analysis : null,
+          mode: 'api',
+          lookId: lookId || (demo ? demo.lookId : 'natural'),
+          confidence: restore && !restore.approx ? 0.92 : (lookId ? 0.8 : (demo ? demo.confidence : 0.6)),
+          reason: demo ? demo.reason : '',
+          apiText: text,
+          analysis: analysis,
           ranked: demo ? demo.ranked : null,
+          restore: restore,
+          steps: steps,
+          queries: normalizeQueries(parsed && parsed.queries, restore),
           usage: resp.usage, sentBytes: sent ? Math.round(sent.length * 0.75) : 0
         };
         if (cfg.cache !== false) cacheSet(cacheKey, out);
@@ -743,7 +971,11 @@ window.VISION = (function () {
           const needCode = e.code === 'ACCESS_CODE';
           return {
             mode: 'demo', lookId: demo.lookId, confidence: demo.confidence,
-            reason: demo.reason, apiText: '', analysis: demo.analysis,
+            reason: demo.reason, apiText: '', analysis: analysis,
+            ranked: demo.ranked,
+            restore: demoRestore(demo, analysis),
+            steps: demoSteps(demo.lookId),
+            queries: demoQueries(demo.lookId),
             error: needCode ? '' : e.message, needCode: needCode
           };
         }
@@ -751,9 +983,48 @@ window.VISION = (function () {
       }
     }
 
-    if (demo) return { mode: 'demo', lookId: demo.lookId, confidence: demo.confidence, reason: demo.reason, apiText: '', analysis: demo.analysis, ranked: demo.ranked };
-    return { mode: 'demo', lookId: 'natural', confidence: 0.5, reason: '无法读取图片像素，已回退到默认推荐。', apiText: '', analysis: null };
+    if (demo) {
+      return {
+        mode: 'demo', lookId: demo.lookId, confidence: demo.confidence,
+        reason: demo.reason, apiText: '', analysis: analysis, ranked: demo.ranked,
+        restore: demoRestore(demo, analysis),
+        steps: demoSteps(demo.lookId),
+        queries: demoQueries(demo.lookId)
+      };
+    }
+    return {
+      mode: 'demo', lookId: 'natural', confidence: 0.5,
+      reason: '无法读取图片像素，已回退到默认推荐。', apiText: '', analysis: null,
+      restore: null, steps: [], queries: []
+    };
   }
+
+  /* 演示模式：把预设妆容的定制建议当步骤，让用户至少有一套可跟的东西 */
+  function demoSteps(lookId) {
+    const looks = (typeof window !== 'undefined' && window.MAKEUP_DATA && window.MAKEUP_DATA.looks) || [];
+    const stages = (typeof window !== 'undefined' && window.MAKEUP_DATA && window.MAKEUP_DATA.stages) || [];
+    const look = looks.find(function (l) { return l.id === lookId; });
+    if (!look) return [];
+    return stages.map(function (s) {
+      const tw = (look.tweaks || {})[s.id];
+      if (!tw) return null;
+      const items = [];
+      if (tw.intro) items.push({ name: '总原则', desc: tw.intro, tip: '' });
+      (tw.notes || []).forEach(function (n, i) {
+        items.push({ name: '要点 ' + (i + 1), desc: n, tip: '' });
+      });
+      if (!items.length) return null;
+      return { stage: s.id, title: s.title, icon: s.icon, intro: tw.intro || '', items: items };
+    }).filter(Boolean);
+  }
+
+  function demoQueries(lookId) {
+    const looks = (typeof window !== 'undefined' && window.MAKEUP_DATA && window.MAKEUP_DATA.looks) || [];
+    const look = looks.find(function (l) { return l.id === lookId; });
+    if (!look) return [];
+    return [look.name + ' 教程', look.name + ' 详细步骤', look.en, look.name + ' 画法'];
+  }
+
 
   /* ============ 肤质分析（整合 API + 演示） ============ */
   async function analyzeSkin(faceImg, answers, cfg) {

@@ -19,7 +19,7 @@ const ROOT = path.resolve(__dirname, '..');
 const OUT = path.join(ROOT, 'dist');
 
 /* 站点入口本身，以及不在 index.html 里被引用但公网也需要的文件 */
-const EXTRA = ['index.html', 'robots.txt', 'sitemap.xml'];
+const EXTRA = ['index.html', 'robots.txt', 'sitemap.xml', 'guide.html'];
 
 /* 本地专用文件黑名单：绝不允许出现在 dist 里 */
 const FORBIDDEN = [

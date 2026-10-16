@@ -389,6 +389,128 @@ html[data-style="glass"] .look-card:hover { background: rgba(255, 255, 255, .72)
   .rk-bar { display: none; }
 }
 
+/* ============ 妆容还原报告 ============ */
+.rs-box { border-left: 4px solid var(--primary); }
+.rs-style { font-size: 17px; font-weight: 800; color: var(--ink); margin: 4px 0 7px; line-height: 1.5; }
+.rs-style small { font-size: 12px; font-weight: 600; color: var(--ink-faint); margin-left: 7px; }
+.rs-sum { font-size: 13px; color: var(--ink-soft); line-height: 1.9; margin: 0 0 14px; }
+.rs-approx {
+  font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 10px;
+  background: var(--warn-bg); color: var(--warn); vertical-align: middle;
+}
+.rs-row {
+  display: grid; grid-template-columns: 76px 1fr; gap: 12px;
+  padding: 11px 0; border-top: 1px dashed var(--line);
+}
+.rs-row:first-child { border-top: none; }
+.rs-label { font-size: 12.5px; font-weight: 800; color: var(--primary-2); padding-top: 2px; }
+.rs-val { font-size: 13px; line-height: 1.9; color: var(--ink); min-width: 0; }
+.rs-sub { display: block; font-style: normal; font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
+.rs-pos { font-style: normal; font-size: 11.5px; color: var(--ink-soft); margin-left: 7px; }
+.rs-dot {
+  display: inline-block; width: 13px; height: 13px; border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, .14); vertical-align: -2px; margin-right: 6px;
+}
+.rs-hex {
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
+  background: var(--primary-faint); color: var(--ink-soft);
+  padding: 1px 6px; border-radius: 5px; margin-left: 5px;
+}
+.rs-shade { display: block; padding: 3px 0; }
+.rs-shade em { font-style: normal; font-size: 11.5px; color: var(--ink-soft); margin-left: 8px; }
+.rs-sampled {
+  margin-top: 13px; padding-top: 13px; border-top: 1px dashed var(--line);
+  font-size: 12px; color: var(--ink-faint);
+}
+.rs-sampled > span { margin-right: 8px; }
+.rs-tag {
+  display: inline-block; font-style: normal; font-size: 11.5px; font-weight: 700;
+  padding: 3px 10px; border-radius: 10px; margin: 4px 6px 0 0;
+  background: var(--primary-faint); color: var(--primary-2);
+}
+
+/* ============ 专属跟练步骤 ============ */
+.bs-stage {
+  border: 1px solid var(--line); border-radius: var(--radius-xs);
+  margin-bottom: 8px; background: #fff; overflow: hidden;
+}
+.bs-stage > summary {
+  display: flex; align-items: center; gap: 9px;
+  padding: 12px 15px; cursor: pointer; list-style: none;
+  font-size: 13.5px; font-weight: 700; color: var(--ink);
+}
+.bs-stage > summary::-webkit-details-marker { display: none; }
+.bs-stage > summary::after { content: '▾'; color: var(--ink-faint); font-size: 11px; margin-left: 6px; }
+.bs-stage[open] > summary::after { content: '▴'; }
+.bs-stage[open] > summary { border-bottom: 1px solid var(--line); background: var(--primary-faint); }
+.bs-no {
+  width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto;
+  display: grid; place-items: center; font-size: 11.5px; font-weight: 800;
+  background: var(--primary-soft); color: var(--primary-2);
+}
+.bs-stage > summary i {
+  font-style: normal; font-size: 11px; font-weight: 700; color: var(--ink-faint); margin-left: auto;
+}
+.bs-intro { margin: 0; padding: 12px 15px 4px; font-size: 12.5px; color: var(--ink-soft); line-height: 1.85; }
+.bs-item { display: flex; gap: 11px; padding: 11px 15px; border-top: 1px dashed var(--line); }
+.bs-k {
+  width: 20px; height: 20px; border-radius: 6px; flex: 0 0 auto; margin-top: 2px;
+  display: grid; place-items: center; font-size: 11px; font-weight: 800;
+  background: var(--primary-faint); color: var(--primary-2);
+}
+.bs-body { flex: 1; min-width: 0; }
+.bs-body b { font-size: 13px; color: var(--ink); }
+.bs-body p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.85; color: var(--ink-soft); }
+
+/* ============ 全网找同款 ============ */
+.srch-chips { display: flex; flex-wrap: wrap; gap: 7px; margin: 11px 0; }
+.srch-chip {
+  padding: 6px 13px; border-radius: 16px; border: 1.5px solid var(--line); background: #fff;
+  font-family: var(--font); font-size: 12.5px; color: var(--ink-soft); cursor: pointer;
+  transition: all .16s var(--ease);
+}
+.srch-chip:hover { border-color: var(--primary); color: var(--primary-2); }
+.srch-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 700; }
+.srch-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 13px; }
+.srch-direct { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-faint); }
+.srch-d {
+  padding: 4px 11px; border-radius: 12px; font-weight: 700;
+  background: var(--primary-faint); color: var(--primary-2); text-decoration: none;
+}
+.srch-d:hover { background: var(--primary); color: #fff; }
+.srch-list { display: flex; flex-direction: column; gap: 8px; }
+.srch-item {
+  display: block; padding: 12px 15px; border-radius: var(--radius-xs);
+  border: 1px solid var(--line); background: #fff; text-decoration: none;
+  transition: all .15s var(--ease);
+}
+.srch-item:hover { border-color: var(--primary); transform: translateX(3px); box-shadow: var(--shadow-sm); }
+.srch-item b { display: block; font-size: 13.5px; color: var(--ink); margin-bottom: 3px; line-height: 1.6; }
+.srch-item span { display: block; font-size: 12px; color: var(--ink-soft); line-height: 1.75; }
+.srch-item i { display: inline-block; font-style: normal; font-size: 10.5px; color: var(--ink-faint); margin-top: 6px; }
+.srch-item em {
+  display: block; font-style: normal; font-size: 11.5px; font-weight: 700;
+  color: var(--primary-2); margin-bottom: 3px;
+}
+.srch-item.is-bili { border-left: 3px solid #fb7299; }
+.srch-tag {
+  display: inline-block; font-size: 10.5px; font-weight: 800; padding: 1px 7px;
+  border-radius: 8px; margin-right: 6px; vertical-align: 1px;
+  background: #fb7299; color: #fff;
+}
+
+.ref-box { background: var(--primary-faint); }
+.ref-name { font-size: 15px; font-weight: 800; color: var(--ink); margin: 5px 0; }
+.ai-raw summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+.ai-raw p {
+  max-height: 360px; overflow: auto; margin-top: 11px;
+  font-size: 12px; line-height: 1.85; color: var(--ink-soft);
+}
+@media (max-width: 520px) {
+  .rs-row { grid-template-columns: 1fr; gap: 4px; }
+  .rs-label { font-size: 12px; }
+}
+
 /* 无精选视频时的说明 */
 .tut-strip-note { font-size: 11.5px; color: var(--ink-faint); align-self: center; }
 
