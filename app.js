@@ -1525,6 +1525,21 @@
       parts.push('<p class="hint">⚡ 来自本地缓存，本次未调用接口（花费 0）</p>');
     }
 
+    /* AI 模式却没拿到还原结果 —— 说明模型没按要求返回 JSON，必须说清楚 */
+    if (isApi && !r.restore) {
+      parts.push('<div class="result-box"><h4>⚠️ 这次没能拿到逐处还原</h4>' +
+        '<p>模型这次没有按要求的 JSON 格式返回（最常见的原因是被输出长度截断了）。可以：</p>' +
+        '<ul class="clean">' +
+          '<li>点「清除」重新传一次图再识别（同一张图会命中缓存，直接重试拿到的还是旧结果）</li>' +
+          '<li>到「设置 → AI 识别」把<b>最大输出长度</b>调大（建议 3500 以上）</li>' +
+        '</ul>' +
+        '<p class="hint">下面仍然给出了站内最接近的现成妆容，可以先用着。</p></div>');
+    }
+    if (r.partial) {
+      parts.push('<p class="hint">✂️ 这次模型输出被长度限制<b>截断了</b>，上面的还原是从半截 JSON 里抢救出来的，' +
+        '后面几项可能缺失。到「设置 → AI 识别」调大最大输出长度可以拿到完整结果。</p>');
+    }
+
     /* 候选排名 */
     const ranked = r.ranked || null;
     if (ranked && ranked.length > 1) {
@@ -2756,7 +2771,7 @@
     cfg = cfg || V.loadConfig();
     if ($('#cfg-detail')) $('#cfg-detail').value = cfg.detail || 'high';
     if ($('#cfg-maximg')) $('#cfg-maximg').value = String(cfg.maxImageSize || 1024);
-    if ($('#cfg-maxtok')) $('#cfg-maxtok').value = cfg.maxTokens || 800;
+    if ($('#cfg-maxtok')) $('#cfg-maxtok').value = cfg.maxTokens || 3000;
     if ($('#cfg-cache')) $('#cfg-cache').value = cfg.cache === false ? '0' : '1';
   }
 
@@ -2764,7 +2779,7 @@
     const cfg = V.loadConfig();
     cfg.detail = $('#cfg-detail').value;
     cfg.maxImageSize = parseInt($('#cfg-maximg').value, 10) || 1024;
-    cfg.maxTokens = Math.max(100, Math.min(4000, parseInt($('#cfg-maxtok').value, 10) || 800));
+    cfg.maxTokens = Math.max(100, Math.min(8000, parseInt($('#cfg-maxtok').value, 10) || 3000));
     cfg.cache = $('#cfg-cache').value === '1';
     V.saveConfig(cfg);
     const st = $('#token-status');

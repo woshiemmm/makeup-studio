@@ -37,7 +37,8 @@ window.VISION = (function () {
       mode: 'auto', provider: key, key: '', accessCode: '', base: d.base, model: d.model,
       detail: 'high',        // 'low' = 512×512 低精度，更省 token
       maxImageSize: 1024,    // 上传前缩放的最大边长
-      maxTokens: 800,        // 输出上限，按需调小更省钱
+      maxTokens: 3000,       // 输出上限。妆容还原要返回「逐处拆解 + 分步教学」的 JSON，
+                             // 800 那种老默认值会直接把它截断，所以默认给足
       cache: true            // 同一张图不重复请求
     };
   }
@@ -594,7 +595,7 @@ window.VISION = (function () {
     if (!cfg) cfg = loadConfig();
     opts = opts || {};
     const provider = PROVIDERS[cfg.provider] || PROVIDERS.custom;
-    const maxOut = opts.maxTokens || cfg.maxTokens || 800;
+    const maxOut = opts.maxTokens || cfg.maxTokens || 3000;
 
     if (provider.type === 'gemini') {
       const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
@@ -705,14 +706,8 @@ window.VISION = (function () {
    * 一套只属于这张图的跟练步骤。
    * ============================================================ */
 
-  /* 从模型回复里抠出 JSON —— 容忍 ```json 包裹、前后废话、字符串里的括号 */
-  function extractJSON(text) {
-    if (!text) return null;
-    let s = String(text).trim();
-    s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
-    try { return JSON.parse(s); } catch (e) { /* 继续抠 */ }
-    const start = s.indexOf('{');
-    if (start < 0) return null;
+  /* 扫描出从 start 开始的第一个「括号配平」的 JSON 片段 */
+  function scanBalanced(s, start) {
     let depth = 0, inStr = false, esc = false;
     for (let i = start; i < s.length; i++) {
       const c = s[i];
@@ -726,13 +721,82 @@ window.VISION = (function () {
       else if (c === '{') depth++;
       else if (c === '}') {
         depth--;
-        if (depth === 0) {
-          try { return JSON.parse(s.slice(start, i + 1)); } catch (e) { return null; }
-        }
+        if (depth === 0) return s.slice(start, i + 1);
       }
+    }
+    return null;   // 没找到配平点 —— 说明被截断了
+  }
+
+  /* 抢救被 max_tokens 截断的半截 JSON。
+   * 做法：先按括号栈补上收尾，再从末尾往前逐段回退，直到能 parse 为止。
+   * 这样即使模型话没说完，前面的字段也还能用上，不至于整块界面空白。 */
+  function repairTruncated(frag) {
+    const closeAll = function (str) {
+      let inStr = false, esc = false;
+      const stack = [];
+      for (let i = 0; i < str.length; i++) {
+        const c = str[i];
+        if (inStr) {
+          if (esc) esc = false;
+          else if (c === '\\') esc = true;
+          else if (c === '"') inStr = false;
+          continue;
+        }
+        if (c === '"') inStr = true;
+        else if (c === '{') stack.push('}');
+        else if (c === '[') stack.push(']');
+        else if (c === '}' || c === ']') stack.pop();
+      }
+      let out = str;
+      if (inStr) out += '"';                       // 停在半个字符串里
+      if (/:\s*$/.test(out)) out += 'null';        // 停在 "key": 后面
+      else if (/,\s*$/.test(out)) out = out.replace(/,\s*$/, '');
+      while (stack.length) out += stack.pop();
+      return out;
+    };
+
+    let s = frag.trim();
+    for (let attempt = 0; attempt < 14 && s.length > 20; attempt++) {
+      const t = closeAll(s);
+      try {
+        const v = JSON.parse(t);
+        if (v && typeof v === 'object') return v;
+      } catch (e) { /* 继续回退 */ }
+      /* 回退到上一个逗号或左括号，砍掉不完整的尾巴 */
+      let cut = s.lastIndexOf(',');
+      const cut2 = Math.max(s.lastIndexOf('{'), s.lastIndexOf('['));
+      if (cut2 > cut) cut = cut2;                  // 让 cut 取更靠后的那个
+      if (cut <= 0) break;
+      s = s.slice(0, cut);
     }
     return null;
   }
+
+  /* 从模型回复里抠 JSON：容忍 ```json 包裹、前后废话、字符串里的括号，
+   * 以及「被截断」的半截 JSON。返回 { data, repaired }。 */
+  function parseModelJSON(text) {
+    if (!text) return { data: null, repaired: false };
+    let s = String(text).trim();
+    const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fence) s = fence[1].trim();
+    s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+
+    try { return { data: JSON.parse(s), repaired: false }; } catch (e) { /* 继续 */ }
+
+    const start = s.indexOf('{');
+    if (start < 0) return { data: null, repaired: false };
+
+    const balanced = scanBalanced(s, start);
+    if (balanced) {
+      try { return { data: JSON.parse(balanced), repaired: false }; } catch (e) { /* 继续 */ }
+    }
+    const fixed = repairTruncated(s.slice(start));
+    if (fixed) return { data: fixed, repaired: true };
+    return { data: null, repaired: false };
+  }
+
+  /* 兼容旧调用点 */
+  function extractJSON(text) { return parseModelJSON(text).data; }
 
   function str(v, def) { return (typeof v === 'string' && v.trim()) ? v.trim() : (def || ''); }
   function arr(v) { return Array.isArray(v) ? v : []; }
@@ -929,9 +993,13 @@ window.VISION = (function () {
       try {
         // 先缩放再上传：模型内部反正会缩，原图直传纯属浪费
         const sent = prepareForAPI(img, cfg.maxImageSize || 1024, 0.85);
-        const resp = await callVisionAPI(sent, prompt, cfg, { maxTokens: 3000 });
+        /* 妆容还原的输出很长（逐处拆解 + 分步教学），最少给 3000；
+         * 用户在设置里调得更大就听用户的。 */
+        const outTokens = Math.max(3000, cfg.maxTokens || 0);
+        const resp = await callVisionAPI(sent, prompt, cfg, { maxTokens: outTokens });
         const text = resp.text;
-        const parsed = extractJSON(text);
+        const parsedInfo = parseModelJSON(text);
+        const parsed = parsedInfo.data;
         const restore = normalizeRestore(parsed, analysis);
         const steps = normalizeSteps(parsed && parsed.steps);
 
@@ -961,6 +1029,7 @@ window.VISION = (function () {
           restore: restore,
           steps: steps,
           queries: normalizeQueries(parsed && parsed.queries, restore),
+          partial: parsedInfo.repaired,   // 模型输出被截断过，界面要给提示
           usage: resp.usage, sentBytes: sent ? Math.round(sent.length * 0.75) : 0
         };
         if (cfg.cache !== false) cacheSet(cacheKey, out);
