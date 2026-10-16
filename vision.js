@@ -45,7 +45,16 @@ window.VISION = (function () {
   function loadConfig() {
     try {
       const raw = localStorage.getItem(CONFIG_KEY);
-      if (raw) return Object.assign(defaultConfig(), JSON.parse(raw));
+      if (raw) {
+        const cfg = Object.assign(defaultConfig(), JSON.parse(raw));
+        /* 一次性迁移：老默认值是 800，而妆容还原要返回「逐处拆解 + 分步教学」的 JSON，
+         * 800 会被直接截断。这个值已经确定太小，自动抬到 3000，避免用户莫名看到半截结果。 */
+        if (!cfg.maxTokens || cfg.maxTokens < 3000) {
+          cfg.maxTokens = 3000;
+          saveConfig(cfg);
+        }
+        return cfg;
+      }
     } catch (e) { /* ignore */ }
     return defaultConfig();
   }
