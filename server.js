@@ -359,6 +359,82 @@ async function handleSearch(req, res) {
   });
 }
 
+/* ---------------- AI 小老师（直接复用 Cloudflare Function） ----------------
+ * 把 functions/api/tutor.js 当模块动态加载 —— 本地跑的就是线上那套逻辑：
+ * 同样的系统提示词、同样的范围锁、同样的输出上限与注入拦截。
+ * 这样「本地能过、线上不行」这种漂移就不会发生。
+ *
+ * 唯一的本地化差异：如果服务器环境变量里没配 DEEPSEEK_API_KEY，
+ * 就用网页「设置」里填的那个 Key（本机开发，本来就是你的额度）。
+ */
+let tutorModule = null;
+
+async function getTutorModule() {
+  if (tutorModule) return tutorModule;
+  const { pathToFileURL } = require('url');
+  const file = pathToFileURL(path.join(ROOT, 'functions', 'api', 'tutor.js')).href;
+  tutorModule = await import(file);
+  return tutorModule;
+}
+
+function sendJSON(res, status, obj) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  });
+  res.end(JSON.stringify(obj));
+}
+
+function handleTutor(req, res) {
+  const chunks = [];
+  let size = 0, tooBig = false;
+
+  req.on('data', function (c) {
+    size += c.length;
+    if (size > MAX_BODY) { tooBig = true; return; }
+    chunks.push(c);
+  });
+
+  req.on('end', async function () {
+    if (tooBig) { sendJSON(res, 413, { error: { message: '请求过大，图片压缩一下再传。' } }); return; }
+
+    try {
+      const mod = await getTutorModule();
+
+      /* Key：环境变量优先，其次用浏览器带来的（仅本机开发如此） */
+      const envKey = process.env.DEEPSEEK_API_KEY || '';
+      const headerKey = String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+
+      const env = {
+        DEEPSEEK_API_KEY: envKey || headerKey,
+        ACCESS_CODE: process.env.ACCESS_CODE || '',
+        ALLOWED_MODELS: process.env.ALLOWED_MODELS || 'deepseek-flash',
+        TUTOR_RATE_LIMIT: process.env.TUTOR_RATE_LIMIT || ''
+      };
+
+      const request = new Request('http://127.0.0.1/api/tutor', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-access-code': String(req.headers['x-access-code'] || ''),
+          'cf-connecting-ip': 'local-' + String(req.socket.remoteAddress || 'x')
+        },
+        body: Buffer.concat(chunks).toString('utf8')
+      });
+
+      const resp = await mod.onRequestPost({ request: request, env: env });
+      const text = await resp.text();
+      res.writeHead(resp.status, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store'
+      });
+      res.end(text);
+    } catch (e) {
+      sendJSON(res, 500, { error: { message: '小老师接口出错：' + (e && e.message ? e.message : e) } });
+    }
+  });
+}
+
 /* ---------------- 服务器 ---------------- */
 const server = http.createServer(function (req, res) {
   setCors(res);
@@ -405,6 +481,16 @@ const server = http.createServer(function (req, res) {
   /* 全网找同款：本地也走一遍，逻辑与 Cloudflare Function 保持一致 */
   if (pathname === '/api/search') {
     handleSearch(req, res);
+    return;
+  }
+
+  /* AI 小老师：直接加载 functions/api/tutor.js，本地 = 线上 */
+  if (pathname === '/api/tutor') {
+    if (req.method !== 'POST') {
+      sendJSON(res, 405, { error: { message: '仅支持 POST 请求。' } });
+      return;
+    }
+    handleTutor(req, res);
     return;
   }
 

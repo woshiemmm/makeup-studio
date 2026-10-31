@@ -17,7 +17,8 @@
     lastRecognize: null,      // 最近一次识别结果，供「保存到我的妆容」使用
     processLook: '',          // 「化妆流程」板块当前指定的妆容，空 = 标准流程
     lookGroup: 'all',         // 选妆分类筛选：all / female / male / cos
-    lookScenes: []            // 选妆场合筛选（可多选）
+    lookScenes: [],           // 选妆场合筛选（可多选）
+    tutor: {}                 // AI 小老师：{ [lessonId]: { log: [], img: '' } }，切课再回来能续上
   };
 
   const $ = function (sel) { return document.querySelector(sel); };
@@ -3941,6 +3942,9 @@
         }).join('') + '</div></div>');
     }
 
+    /* AI 小老师：练完自检之后，把这一节课 + 你的练习交给它判 */
+    parts.push(tutorCardHtml(lo));
+
     if (lo.videos && lo.videos.length) {
       parts.push('<div class="card"><div class="card-title"><h3>📺 配套视频</h3>' +
         '<span class="hint">B 站，点开新窗口看</span></div>' +
@@ -3992,6 +3996,188 @@
         renderCourse(lo.id);
       });
     }
+
+    /* AI 小老师（在 ⑤ 自检之后渲染，这里绑定交互） */
+    bindTutor(box, lo);
+  }
+
+  /* ---------- AI 小老师 ----------
+   * 只走本站接口（Cloudflare Function；本地由 server.js 转发同一个实现），
+   * 所以系统提示词、输出上限、注入拦截全在服务端，前端改不了。
+   * 前端只负责：收集「课程要点 + 我的操作 + 我的问题 + 一张照片」。
+   */
+  function tutorState(id) {
+    if (!state.tutor[id]) state.tutor[id] = { log: [], img: '', busy: false };
+    return state.tutor[id];
+  }
+
+  /* 把一节课压成一段资料（服务端会再截断一次，这里先控制体积） */
+  function tutorBrief(lo) {
+    const parts = ['课程：' + lo.title];
+    if (lo.goal) parts.push('目标：' + lo.goal);
+    if (lo.points && lo.points.length) {
+      parts.push('要点：' + lo.points.map(function (p) { return p.t + '——' + p.d; }).join('；'));
+    }
+    if (lo.steps && lo.steps.length) parts.push('步骤：' + lo.steps.join('；'));
+    if (lo.mistakes && lo.mistakes.length) {
+      parts.push('常见错误：' + lo.mistakes.map(function (m) { return m.p + '——' + m.f; }).join('；'));
+    }
+    if (lo.checklist && lo.checklist.length) parts.push('自检：' + lo.checklist.join('；'));
+    return parts.join('\n').slice(0, 1600);
+  }
+
+  function tutorLogHtml(id) {
+    const st = tutorState(id);
+    if (!st.log.length) {
+      return '<p class="crt-empty">还没问过。练完了就把结果说给我听，或者直接把照片发给我看。</p>';
+    }
+    return st.log.map(function (m) {
+      if (m.who === 'me') {
+        return '<div class="crt-msg is-me">' +
+          (m.img ? '<img class="crt-thumb" src="' + escapeHtml(m.img) + '" alt="练习照片" />' : '') +
+          '<div class="crt-bubble">' + escapeHtml(m.text) + '</div></div>';
+      }
+      return '<div class="crt-msg is-ai"><span class="crt-ava">🤖</span>' +
+        '<div class="crt-bubble' + (m.blocked ? ' is-blocked' : '') + '">' +
+        escapeHtml(m.text).replace(/\n/g, '<br>') + '</div></div>';
+    }).join('');
+  }
+
+  function tutorCardHtml(lo) {
+    const st = tutorState(lo.id);
+    const chips = [
+      '帮我看看这次练得对不对',
+      '这一步我总是做不好，问题出在哪',
+      '按我的情况，用量和位置要怎么调'
+    ];
+    return '<div class="card cr-tutor" id="crt-card">' +
+      '<div class="card-title"><h3>🤖 AI 小老师</h3>' +
+        '<span class="hint">这节课的要点会一起发过去</span></div>' +
+
+      '<div class="crt-chips">' + chips.map(function (c) {
+        return '<button type="button" class="chip crt-chip" data-chip="' + escapeHtml(c) + '">' + escapeHtml(c) + '</button>';
+      }).join('') + '</div>' +
+
+      '<textarea class="crt-input" id="crt-input" rows="3" ' +
+        'placeholder="描述你这次练成什么样了（哪里卡粉、哪里不对称、哪一步不会）… 或者直接问一个问题"></textarea>' +
+
+      '<div class="crt-row">' +
+        '<label class="crt-attach">' +
+          '<input type="file" accept="image/*" id="crt-file" hidden />' +
+          '<span>📷 ' + (st.img ? '换一张练习照片' : '加一张练习照片') + '</span>' +
+        '</label>' +
+        '<span class="crt-file" id="crt-file-name">' +
+          (st.img ? '已附带照片' : '不附也行，只发文字也可以') + '</span>' +
+      '</div>' +
+
+      '<div class="crt-actions">' +
+        '<button type="button" class="btn primary" id="crt-review">让小老师看我的练习</button>' +
+        '<button type="button" class="btn ghost" id="crt-ask">问个问题</button>' +
+      '</div>' +
+
+      '<p class="hint crt-note">只回答化妆相关的问题；每次回复有长度上限，不会被刷。</p>' +
+      '<div class="crt-log" id="crt-log">' + tutorLogHtml(lo.id) + '</div>' +
+    '</div>';
+  }
+
+  function bindTutor(box, lo) {
+    const st = tutorState(lo.id);
+    const input = box.querySelector('#crt-input');
+    const logBox = box.querySelector('#crt-log');
+
+    const refreshLog = function () {
+      if (logBox) logBox.innerHTML = tutorLogHtml(lo.id);
+      if (logBox) logBox.scrollTop = logBox.scrollHeight;
+    };
+
+    /* 快捷问题：填进输入框，不自动发送（让人先改一改） */
+    box.querySelectorAll('.crt-chip').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (input) { input.value = b.dataset.chip || ''; input.focus(); }
+      });
+    });
+
+    /* 附照片：先压到 1024px 再存，服务端有大小上限 */
+    const fileEl = box.querySelector('#crt-file');
+    if (fileEl) {
+      fileEl.addEventListener('change', function () {
+        const f = fileEl.files && fileEl.files[0];
+        if (!f) return;
+        const nameEl = box.querySelector('#crt-file-name');
+        if (nameEl) nameEl.textContent = '正在压缩图片…';
+        V.compressImageFile(f, 1024, 0.8).then(function (url) {
+          st.img = url;
+          if (nameEl) {
+            nameEl.textContent = '已附带照片（约 ' + Math.round(url.length * 0.75 / 1024) + ' KB）';
+          }
+        }).catch(function (e) {
+          st.img = '';
+          if (nameEl) nameEl.textContent = '图片用不了：' + (e.message || '换个格式试试');
+        });
+      });
+    }
+
+    const send = function (mode) {
+      if (st.busy) return;
+      const text = (input ? input.value : '').trim();
+      if (mode === 'review' && !text && !st.img) {
+        toast('写一句你这次练了什么，或者加一张照片');
+        return;
+      }
+      if (mode === 'ask' && !text) {
+        toast('先写一下你想问什么');
+        return;
+      }
+
+      const prev = st.log.filter(function (m) { return m.who === 'ai'; }).pop();
+      const payload = {
+        lessonId: lo.id,
+        mode: mode,
+        question: mode === 'ask' ? text : '',
+        practice: mode === 'review' ? text : '',
+        image: mode === 'review' ? (st.img || '') : '',
+        prevAnswer: prev ? String(prev.text).slice(0, 300) : '',
+        lessonBrief: tutorBrief(lo)
+      };
+
+      st.log.push({ who: 'me', text: text || '（看我的练习照片）', img: mode === 'review' ? st.img : '' });
+      st.busy = true;
+      refreshLog();
+      setTutorButtons(true);
+
+      V.askTutor(payload).then(function (r) {
+        st.log.push({ who: 'ai', text: r.reply, blocked: r.blocked });
+        if (r.truncated) toast('小老师的回答被长度上限截断了，可以追问细节');
+      }).catch(function (e) {
+        const msg = (e && e.message) ? e.message : String(e);
+        st.log.push({ who: 'ai', text: '⚠️ ' + msg, blocked: true });
+        toast('小老师这次没答上来');
+      }).then(function () {
+        st.busy = false;
+        setTutorButtons(false);
+        refreshLog();
+        if (input) input.value = '';
+        /* 一次只带一张照片，发完清掉，避免下次误带 */
+        if (mode === 'review' && st.img) {
+          st.img = '';
+          const nameEl = box.querySelector('#crt-file-name');
+          if (nameEl) nameEl.textContent = '不附也行，只发文字也可以';
+          if (fileEl) fileEl.value = '';
+        }
+      });
+    };
+
+    function setTutorButtons(disabled) {
+      const a = box.querySelector('#crt-review');
+      const b = box.querySelector('#crt-ask');
+      if (a) { a.disabled = disabled; a.textContent = disabled ? '小老师正在看…' : '让小老师看我的练习'; }
+      if (b) b.disabled = disabled;
+    }
+
+    const rb = box.querySelector('#crt-review');
+    const ab = box.querySelector('#crt-ask');
+    if (rb) rb.addEventListener('click', function () { send('review'); });
+    if (ab) ab.addEventListener('click', function () { send('ask'); });
   }
 
   /* ============ 初始化 ============ */

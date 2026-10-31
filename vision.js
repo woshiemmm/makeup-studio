@@ -95,6 +95,28 @@ window.VISION = (function () {
     }
   }
 
+  /* 把用户选的图片文件压到指定边长，返回 dataURL。
+   * 给「AI 小老师」收练习照片用 —— 原图动辄 4~8MB，服务端有大小上限，
+   * 必须先压。压缩失败就退回原图 dataURL，不阻断流程。 */
+  function compressImageFile(file, maxSize, quality) {
+    return new Promise(function (resolve, reject) {
+      if (!file) { reject(new Error('没有选择图片')); return; }
+      fileToDataURL(file).then(function (url) {
+        try {
+          const img = new Image();
+          img.onload = function () {
+            let out = url;
+            try { out = prepareForAPI(img, maxSize || 1024, quality || 0.82) || url; }
+            catch (e) { out = url; }
+            resolve(out);
+          };
+          img.onerror = function () { reject(new Error('这张图片读不出来，换一张试试')); };
+          img.src = url;
+        } catch (e) { resolve(url); }
+      }, reject);
+    });
+  }
+
   /* 结果缓存：同一张图不重复调用 API */
   const cache = new Map();
   const CACHE_MAX = 30;
@@ -640,6 +662,39 @@ window.VISION = (function () {
         usage: json.usage || null
       };
     } catch (e) { throw new Error('接口返回格式异常，请确认模型支持图片输入（DeepSeek 请使用 deepseek-flash）。'); }
+  }
+
+  /* ============ AI 小老师 ============
+   * 只走「本站接口」：Cloudflare 上是 /api/tutor，本地由 server.js 转发同一个实现。
+   * 这样系统提示词、范围锁、输出上限、注入拦截全在服务端 —— 前端改不了，
+   * 也拿不到提示词。直连第三方 API 的模式不做支持（那样这些保护就没了）。
+   */
+  function tutorEndpoint(cfg) {
+    cfg = cfg || loadConfig();
+    const base = apiBase(cfg);
+    if (/\/api$/.test(base)) return base + '/tutor';                       // 本站代理
+    if (/^https?:\/\/(127\.0\.0\.1|localhost):\d+\/v1$/.test(base)) {      // 本地代理
+      return base.replace(/\/v1$/, '') + '/api/tutor';
+    }
+    return '';
+  }
+
+  async function askTutor(payload, cfg) {
+    cfg = cfg || loadConfig();
+    const url = tutorEndpoint(cfg);
+    if (!url) {
+      throw new Error('AI 小老师只走本站接口。请到「设置 → AI 识别」把接口换成「本站服务器」或「DeepSeek 本地代理」。');
+    }
+    const json = await postJSON(url, authHeaders(cfg), payload);
+    if (!json || typeof json.reply !== 'string') {
+      throw new Error('小老师返回格式异常，稍后再试。');
+    }
+    return {
+      reply: json.reply,
+      blocked: !!json.blocked,
+      truncated: !!json.truncated,
+      usage: json.usage || null
+    };
   }
 
   /* ============ 连接测试（设置页用） ============ */
@@ -2589,6 +2644,7 @@ window.VISION = (function () {
     PROVIDERS: PROVIDERS,
     fileToDataURL: fileToDataURL,
     compressImage: compressImage,
+    compressImageFile: compressImageFile,
     prepareForAPI: prepareForAPI,
     analyzeColors: analyzeColors,
     matchLookByColor: matchLookByColor,
@@ -2607,6 +2663,8 @@ window.VISION = (function () {
     isLocalEnv: isLocalEnv,
     apiBase: apiBase,
     testConnection: testConnection,
+    tutorEndpoint: tutorEndpoint,
+    askTutor: askTutor,
     PROXY_BASE: PROXY_BASE,
     SITE_API: SITE_API
   };
