@@ -13,3 +13,5 @@ desktop.ini
 node_modules/
 *.log
 .ssh/
+
+qq-ai-bot/

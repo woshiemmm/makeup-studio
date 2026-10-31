@@ -62,9 +62,40 @@ function setCors(res) {
   res.setHeader('Access-Control-Max-Age', '86400');
 }
 
-/* ---------------- 静态文件 ---------------- */
+/* ---------------- 静态文件 ----------------
+ * 这个目录里除了网站本身，还放着别的东西：私钥（.ssh/）、源码（tools/、functions/）、
+ * 以及别的项目（qq-ai-bot/）。本地开发服务器只该服务「网站自己」的文件 ——
+ * 一旦有人把端口转发出去，这些就会变成公开可下载的。
+ * 所以这里用白名单思路：只放行根目录下网站自己的文件 + 明确的静态资源子目录。
+ */
+const PUBLIC_ROOT_FILES = [
+  'index.html', 'data.js', 'vision.js', 'store.js', 'web-app.js',
+  'styles.css', 'guide.html', 'favicon.svg', 'robots.txt', 'sitemap.xml'
+];
+/* 以后如果要加图片/字体目录，加到这里 */
+const PUBLIC_DIRS = ['assets', 'img', 'images', 'fonts', 'static'];
+
+function isBlocked(rel) {
+  const clean = String(rel || '').replace(/^\/+/, '');
+  const segs = clean.split('/').filter(function (s) { return s; });
+  if (!segs.length) return false;
+  /* 任何点开头的路径段：.git / .ssh / .env / .gitignore */
+  if (segs.some(function (s) { return s.charAt(0) === '.'; })) return true;
+  /* 根目录：只给白名单里的文件 */
+  if (segs.length === 1) return PUBLIC_ROOT_FILES.indexOf(segs[0].toLowerCase()) < 0;
+  /* 子目录：只给白名单里的素材目录 */
+  return PUBLIC_DIRS.indexOf(segs[0].toLowerCase()) < 0;
+}
+
 function serveStatic(pathname, res) {
   const rel = pathname === '/' ? '/index.html' : pathname;
+
+  if (isBlocked(rel)) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('404 Not Found');
+    return;
+  }
+
   const filePath = path.normalize(path.join(ROOT, rel));
 
   // 防目录穿越
@@ -338,7 +369,21 @@ const server = http.createServer(function (req, res) {
     return;
   }
 
-  const pathname = decodeURIComponent((req.url || '/').split('?')[0]);
+  /* 注意：decodeURIComponent 遇到非法转义（比如请求 /%）会抛 URIError，
+   * 而这是请求处理函数，抛出去会直接把整个进程带崩。必须兜住。 */
+  let pathname = '/';
+  try {
+    pathname = decodeURIComponent((req.url || '/').split('?')[0]);
+  } catch (e) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('400 Bad Request');
+    return;
+  }
+  if (pathname.indexOf('\0') >= 0) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('400 Bad Request');
+    return;
+  }
 
   if (pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
