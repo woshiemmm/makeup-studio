@@ -109,6 +109,9 @@
     </button>
 
     <nav class="nav">
+      <button class="nav-item" data-view="course">
+        <span class="nav-icon">📚</span> 新手课程
+      </button>
       <button class="nav-item active" data-view="teach">
         <span class="nav-icon">🎨</span> 化妆教学
       </button>
@@ -142,6 +145,17 @@
         <h2>化妆教学</h2>
         <p class="sub">选择你想画的妆容，系统会按「妆前准备 → 妆后护肤」为你定制每一步。</p>
       </div>
+
+      <!-- 新手入口：第一次来的人应该先看到这个 -->
+      <a class="course-entry" href="#/course" id="course-entry">
+        <span class="ce-icon">📚</span>
+        <span class="ce-body">
+          <b>第一次画，不知道从哪开始？</b>
+          <small>18 节零基础课程：先讲原理，再教手法，每节都有练习和自检，最后串成一套完整妆容。</small>
+        </span>
+        <span class="ce-progress" id="course-entry-progress"></span>
+        <span class="ce-arrow">→</span>
+      </a>
 
       <!-- 选妆 -->
       <div class="card" id="look-picker">
@@ -193,6 +207,11 @@
       <!-- 购物清单（按当前妆容生成） -->
       <div class="card hidden" id="shop-card"></div>
 
+    </section>
+
+    <!-- 新手课程视图（从 0 基础开始的长期自学课程） -->
+    <section class="view" id="view-course">
+      <div id="course-body"></div>
     </section>
 
     <!-- 化妆流程视图（独立大板块） -->
@@ -521,6 +540,6 @@
 <script src="data.js"></script>
 <script src="vision.js"></script>
 <script src="store.js"></script>
-<script src="app.js"></script>
+<script src="web-app.js"></script>
 </body>
 </html>

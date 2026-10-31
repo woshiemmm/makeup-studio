@@ -62,7 +62,7 @@
    *       #/teach/natural    → 清透裸妆的教学
    *       #/process          → 化妆流程
    */
-  const VIEWS = ['teach', 'process', 'recognize', 'analysis', 'shop', 'settings'];
+  const VIEWS = ['course', 'teach', 'process', 'recognize', 'analysis', 'shop', 'settings'];
 
   /* 解析地址栏的 hash。第二个路径段对 teach 是妆容 id，对 shop 是品类 id */
   function currentRoute() {
@@ -94,6 +94,8 @@
 
     if (r.view === 'process') {
       renderProcess();
+    } else if (r.view === 'course') {
+      renderCourse(r.look);            // r.look 这里是课时 id，空表示课程目录
     } else if (r.view === 'shop') {
       renderShopPage(r.look);          // r.look 这里是品类 id，空表示显示目录
     } else if (r.view === 'teach') {
@@ -182,7 +184,10 @@
     // 先把 navCurrent 改成目标，这样 syncNav 不会把当前页误当成「前进」压栈，
     // 否则再点一次返回会又跳回来。
     const r = currentRoute();
-    const parent = r.look ? (r.view === 'shop' ? 'shop' : 'teach') : 'teach';
+    /* 逻辑上的上一层：课程课时 → 课程目录；产品详情 → 产品目录；妆容教学 → 选妆 */
+    let parent = 'teach';
+    if (r.view === 'shop') parent = r.look ? 'shop' : 'teach';
+    else if (r.view === 'course') parent = r.look ? 'course' : 'teach';
     navCurrent = parent;
     go(parent);
   }
@@ -3679,6 +3684,316 @@
       '<br>下次生成分析报告时会自动带上这份档案，你也可以直接点「应用此方案」按它定制化妆步骤。</p>';
   }
 
+  /* ============ 零基础课程（从完全不会到能独立画完一套） ============
+   * 数据来自 D.course：{ intro, howto[], chapters[{ id,title,icon,goal,lessons[] }] }
+   * 每节课：{ id,title,type,minutes,goal,why,points[],steps[],mistakes[],drills[],checklist[],videos[],key }
+   * 学习进度存在 STORE 里（按账号隔离）。
+   */
+  const COURSE_TYPE = {
+    theory: { label: '理论', cls: 'theory' },
+    skill: { label: '实操', cls: 'skill' },
+    integration: { label: '整合', cls: 'integration' },
+    method: { label: '方法', cls: 'method' }
+  };
+
+  function courseData() {
+    const c = D.course;
+    if (!c || !Array.isArray(c.chapters) || !c.chapters.length) return { chapters: [] };
+    return c;
+  }
+
+  /* 压平成一维，方便算总进度和「上一课 / 下一课」 */
+  function courseFlat() {
+    const out = [];
+    courseData().chapters.forEach(function (ch) {
+      (ch.lessons || []).forEach(function (lo) { out.push({ chapter: ch, lesson: lo }); });
+    });
+    return out;
+  }
+
+  function courseProg() {
+    try { return S.getCourseProgress() || {}; } catch (e) { return {}; }
+  }
+
+  function courseStats() {
+    const flat = courseFlat();
+    const prog = courseProg();
+    let done = 0;
+    flat.forEach(function (x) { if (prog[x.lesson.id]) done++; });
+    const total = flat.length;
+    return { total: total, done: done, percent: total ? Math.round((done / total) * 100) : 0 };
+  }
+
+  function lessonById(id) {
+    if (!id) return null;
+    const hit = courseFlat().filter(function (x) { return x.lesson.id === id; })[0];
+    return hit ? hit.lesson : null;
+  }
+
+  /* 第一个没学完的课时；全学完就回第一课 */
+  function nextUndoneId() {
+    const prog = courseProg();
+    const flat = courseFlat();
+    for (let i = 0; i < flat.length; i++) {
+      if (!prog[flat[i].lesson.id]) return flat[i].lesson.id;
+    }
+    return flat.length ? flat[0].lesson.id : '';
+  }
+
+  function courseTypeBadge(t) {
+    const m = COURSE_TYPE[t] || COURSE_TYPE.theory;
+    return '<span class="cr-type ' + m.cls + '">' + m.label + '</span>';
+  }
+
+  /* 教学页顶部那张入口卡上的进度文案 */
+  function updateCourseEntry() {
+    const box = $('#course-entry-progress');
+    if (!box) return;
+    const st = courseStats();
+    if (!st.total) { box.innerHTML = ''; return; }
+    box.innerHTML = st.done
+      ? '已学 <b>' + st.done + '</b> / ' + st.total + ' 节'
+      : '共 <b>' + st.total + '</b> 节';
+  }
+
+  function renderCourse(lessonId) {
+    const box = $('#course-body');
+    if (!box) return;
+    const flat = courseFlat();
+    if (!flat.length) {
+      box.innerHTML = '<div class="page-head"><h2>新手课程</h2></div>' +
+        '<div class="card"><p class="hint">课程数据没有加载进来，请确认 data.js 里有 course 字段。</p></div>';
+      return;
+    }
+    const hit = lessonId ? flat.filter(function (x) { return x.lesson.id === lessonId; })[0] : null;
+    if (hit) renderCourseLesson(box, hit);
+    else renderCourseHome(box);
+    updateCourseEntry();
+  }
+
+  /* ---------- 课程目录 ---------- */
+  function renderCourseHome(box) {
+    const c = courseData();
+    const st = courseStats();
+    const prog = courseProg();
+    const nextId = nextUndoneId();
+    const nextLesson = lessonById(nextId);
+    const parts = [];
+
+    parts.push('<div class="page-head"><h2>零基础课程</h2>' +
+      '<p class="sub">' + escapeHtml(c.subtitle ||
+        '从完全不会，到能独立给自己画完一套日常妆。共 ' + st.total + ' 节，按顺序学，每节都有练习和自检。') +
+      '</p></div>');
+
+    /* 进度 */
+    parts.push('<div class="card cr-progress">' +
+      '<div class="crp-top">' +
+        '<div><b>' + (st.done ? '已学 ' + st.done + ' / ' + st.total + ' 节' : '还没开始') + '</b>' +
+        '<small>' + (st.total && st.done >= st.total
+          ? '全部学完了 —— 回头挑一节重练，或者去「化妆教学」按妆容练'
+          : '建议按顺序学，别跳着看：后面的课都默认你已经练过前面的') + '</small></div>' +
+        '<span class="crp-pct">' + st.percent + '<em>%</em></span>' +
+      '</div>' +
+      '<div class="crp-bar"><i style="width:' + st.percent + '%"></i></div>' +
+      '<div class="crp-actions">' +
+        '<a class="btn primary" href="#/course/' + escapeHtml(nextId) + '">' +
+          (st.done ? '继续学：' : '从第一课开始：') +
+          escapeHtml(nextLesson ? nextLesson.title : '') + ' →</a>' +
+        (st.done ? '<button class="btn ghost" id="cr-reset">重置进度</button>' : '') +
+      '</div>' +
+    '</div>');
+
+    /* 怎么用 */
+    if (c.intro || (c.howto && c.howto.length)) {
+      parts.push('<div class="card"><div class="card-title"><h3>📖 这门课怎么用</h3></div>' +
+        (c.intro ? '<p class="cr-intro">' + escapeHtml(c.intro) + '</p>' : '') +
+        (c.howto && c.howto.length
+          ? '<ol class="cr-howto">' + c.howto.map(function (h) {
+              return '<li>' + escapeHtml(h) + '</li>';
+            }).join('') + '</ol>'
+          : '') +
+      '</div>');
+    }
+
+    /* 各阶段 */
+    c.chapters.forEach(function (ch) {
+      const lessons = ch.lessons || [];
+      let chDone = 0;
+      lessons.forEach(function (lo) { if (prog[lo.id]) chDone++; });
+      parts.push('<div class="card cr-chapter">' +
+        '<div class="card-title"><h3>' + escapeHtml(ch.icon || '') + ' ' + escapeHtml(ch.title || '') + '</h3>' +
+          '<span class="hint">' + chDone + ' / ' + lessons.length + '</span></div>' +
+        (ch.goal ? '<p class="cr-goal">' + escapeHtml(ch.goal) + '</p>' : '') +
+        '<div class="cr-lessons">' +
+          lessons.map(function (lo, li) {
+            const done = !!prog[lo.id];
+            return '<a class="cr-row' + (done ? ' is-done' : '') + '" href="#/course/' + escapeHtml(lo.id) + '">' +
+              '<span class="crr-idx">' + (done ? '✓' : String(li + 1)) + '</span>' +
+              '<span class="crr-main">' +
+                '<b>' + escapeHtml(lo.title || '') + '</b>' +
+                (lo.goal ? '<small>' + escapeHtml(String(lo.goal).slice(0, 52)) + '</small>' : '') +
+              '</span>' +
+              '<span class="crr-meta">' + courseTypeBadge(lo.type) +
+                '<em>' + (lo.minutes || 0) + ' 分钟</em></span>' +
+            '</a>';
+          }).join('') +
+        '</div>' +
+      '</div>');
+    });
+
+    box.innerHTML = parts.join('');
+
+    const reset = $('#cr-reset');
+    if (reset) {
+      reset.addEventListener('click', function () {
+        confirmDialog({
+          title: '重置课程进度',
+          message: '所有课时的「已学完」标记和自检勾选都会清空，不能恢复。',
+          okText: '重置',
+          danger: true
+        }).then(function (ok) {
+          if (!ok) return;
+          S.resetCourse();
+          toast('已重置课程进度');
+          renderCourse('');
+        });
+      });
+    }
+  }
+
+  /* ---------- 单节课 ---------- */
+  function renderCourseLesson(box, hit) {
+    const lo = hit.lesson;
+    const ch = hit.chapter;
+    const flat = courseFlat();
+    const idx = flat.findIndex(function (x) { return x.lesson.id === lo.id; });
+    const prev = idx > 0 ? flat[idx - 1].lesson : null;
+    const next = idx >= 0 && idx < flat.length - 1 ? flat[idx + 1].lesson : null;
+    const prog = courseProg();
+    const done = !!prog[lo.id];
+    const ckKey = 'course:' + lo.id;
+    let ck = [];
+    try { ck = S.getChecklist(ckKey) || []; } catch (e) { ck = []; }
+
+    const parts = [];
+
+    parts.push('<div class="page-head cr-head">' +
+      '<a class="cr-back" href="#/course">← 课程目录</a>' +
+      '<h2>' + escapeHtml(lo.title || '') + '</h2>' +
+      '<p class="sub cr-sub">' + escapeHtml(ch.title || '') + ' · ' + courseTypeBadge(lo.type) +
+        '<em class="cr-min">约 ' + (lo.minutes || 0) + ' 分钟' +
+        (done ? ' · <b class="cr-done-tag">已学完</b>' : '') + '</em></p>' +
+    '</div>');
+
+    if (lo.goal) {
+      parts.push('<div class="card cr-goalcard"><b>🎯 学完你能</b><p>' + escapeHtml(lo.goal) + '</p></div>');
+    }
+    if (lo.why) {
+      parts.push('<div class="card"><div class="card-title"><h3>💡 为什么要学这个</h3></div>' +
+        '<p class="cr-why">' + escapeHtml(lo.why) + '</p></div>');
+    }
+
+    if (lo.points && lo.points.length) {
+      parts.push('<div class="card"><div class="card-title"><h3>① 先弄懂原理</h3>' +
+        '<span class="hint">' + lo.points.length + ' 个要点</span></div>' +
+        '<ol class="cr-points">' + lo.points.map(function (p) {
+          return '<li><b>' + escapeHtml(p.t || '') + '</b><span>' + escapeHtml(p.d || '') + '</span></li>';
+        }).join('') + '</ol></div>');
+    }
+
+    if (lo.steps && lo.steps.length) {
+      parts.push('<div class="card"><div class="card-title"><h3>② 照着做</h3>' +
+        '<span class="hint">对着镜子一步一步来</span></div>' +
+        '<ol class="cr-steps">' + lo.steps.map(function (s) {
+          return '<li>' + escapeHtml(s) + '</li>';
+        }).join('') + '</ol></div>');
+    }
+
+    if (lo.drills && lo.drills.length) {
+      parts.push('<div class="card"><div class="card-title"><h3>③ 动手练</h3>' +
+        '<span class="hint">光看不练等于没学</span></div>' +
+        '<div class="cr-drills">' + lo.drills.map(function (d) {
+          return '<div class="cr-drill">' +
+            '<div class="crd-top"><b>' + escapeHtml(d.name || '') + '</b>' +
+              (d.minutes ? '<em>' + d.minutes + ' 分钟</em>' : '') + '</div>' +
+            '<p>' + escapeHtml(d.how || '') + '</p>' +
+            (d.target ? '<small>✅ 过关标准：' + escapeHtml(d.target) + '</small>' : '') +
+          '</div>';
+        }).join('') + '</div></div>');
+    }
+
+    if (lo.mistakes && lo.mistakes.length) {
+      parts.push('<div class="card"><div class="card-title"><h3>④ 新手最容易踩的坑</h3>' +
+        '<span class="hint">' + lo.mistakes.length + ' 条</span></div>' +
+        '<div class="cr-mistakes">' + lo.mistakes.map(function (m) {
+          return '<div class="cr-mistake"><b>✗ ' + escapeHtml(m.p || '') + '</b>' +
+            '<span>' + escapeHtml(m.f || '') + '</span></div>';
+        }).join('') + '</div></div>');
+    }
+
+    if (lo.checklist && lo.checklist.length) {
+      parts.push('<div class="card"><div class="card-title"><h3>⑤ 学完自检</h3>' +
+        '<span class="hint">都能做到才算过关（勾选会保存）</span></div>' +
+        '<div class="cr-checks">' + lo.checklist.map(function (t, i) {
+          return '<label class="cr-check"><input type="checkbox" data-ck="' + i + '"' +
+            (ck.indexOf(i) >= 0 ? ' checked' : '') + ' />' +
+            '<span>' + escapeHtml(t) + '</span></label>';
+        }).join('') + '</div></div>');
+    }
+
+    if (lo.videos && lo.videos.length) {
+      parts.push('<div class="card"><div class="card-title"><h3>📺 配套视频</h3>' +
+        '<span class="hint">B 站，点开新窗口看</span></div>' +
+        '<div class="cr-videos">' + lo.videos.map(function (v) {
+          return '<a class="cr-video" href="https://www.bilibili.com/video/' + escapeHtml(v.bv || '') + '/" ' +
+            'target="_blank" rel="noopener">' +
+            '<span class="crv-play">▶</span>' +
+            '<span class="crv-main"><b>' + escapeHtml(v.t || '') + '</b>' +
+              '<small>' + escapeHtml(v.au || '') +
+                (v.play ? ' · ' + escapeHtml(v.play) + ' 播放' : '') +
+                (v.bv ? ' · ' + escapeHtml(v.bv) : '') + '</small></span>' +
+          '</a>';
+        }).join('') + '</div></div>');
+    }
+
+    if (lo.key) {
+      parts.push('<div class="cr-key"><b>一句话记住</b><p>' + escapeHtml(lo.key) + '</p></div>');
+    }
+
+    parts.push('<div class="cr-foot">' +
+      (prev ? '<a class="btn ghost" href="#/course/' + escapeHtml(prev.id) + '">← 上一课</a>' : '<span></span>') +
+      '<button class="btn ' + (done ? 'ghost' : 'primary') + '" id="cr-done">' +
+        (done ? '✓ 已学完（点此取消）' : '标记为学完') + '</button>' +
+      (next ? '<a class="btn ' + (done ? 'primary' : 'ghost') + '" href="#/course/' + escapeHtml(next.id) + '">下一课 →</a>' : '<span></span>') +
+    '</div>');
+
+    box.innerHTML = parts.join('');
+
+    /* 自检勾选：勾满提醒，并持久化 */
+    box.querySelectorAll('[data-ck]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        const arr = [];
+        box.querySelectorAll('[data-ck]').forEach(function (x) {
+          if (x.checked) arr.push(Number(x.dataset.ck));
+        });
+        try { S.setChecklist(ckKey, arr); } catch (e) { /* 存不下也不影响阅读 */ }
+        if (arr.length === lo.checklist.length && !courseProg()[lo.id]) {
+          toast('✅ 自检全过，可以标记学完了');
+        }
+      });
+    });
+
+    const btn = $('#cr-done');
+    if (btn) {
+      btn.addEventListener('click', function () {
+        const nowDone = !courseProg()[lo.id];
+        S.markLesson(lo.id, nowDone);
+        toast(nowDone ? '✅ 已标记学完' + (next ? '，接着学下一课吧' : '') : '已取消完成标记');
+        renderCourse(lo.id);
+      });
+    }
+  }
+
   /* ============ 初始化 ============ */
   function init() {
     // 界面主题与风格（要尽早，避免闪一下默认配色）
@@ -3688,6 +4003,9 @@
     $$('.nav-item').forEach(function (b) {
       b.addEventListener('click', function () { switchView(b.dataset.view); });
     });
+
+    // 新手课程入口卡上的进度
+    updateCourseEntry();
 
     // 产品推荐：从品类详情返回目录
     const shopBack = $('#btn-shop-back');

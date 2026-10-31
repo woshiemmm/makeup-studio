@@ -119,7 +119,7 @@ window.STORE = (function () {
   }
 
   function defaultData() {
-    return { myLooks: [], skinProfile: null, prefs: null, checklist: {}, updatedAt: Date.now() };
+    return { myLooks: [], skinProfile: null, prefs: null, checklist: {}, course: {}, updatedAt: Date.now() };
   }
 
   function getData(accountId) {
@@ -233,6 +233,35 @@ window.STORE = (function () {
 
   function clearChecklist(key, accountId) { return setChecklist(key, [], accountId); }
 
+  /* ---------------- 零基础课程的学习进度 ----------------
+   * 结构：{ '<lessonId>': { at: 时间戳 } }，有 key 就是学完了
+   * 用对象而不是数组，方便以后给每节课加备注/评分等信息。 */
+  function getCourseProgress(accountId) {
+    const d = getData(accountId);
+    return (d.course && typeof d.course === 'object') ? d.course : {};
+  }
+
+  function markLesson(lessonId, done, accountId) {
+    if (!lessonId) return { ok: false };
+    const d = getData(accountId);
+    if (!d.course || typeof d.course !== 'object') d.course = {};
+    if (done === false) delete d.course[lessonId];
+    else d.course[lessonId] = { at: Date.now() };
+    return { ok: saveData(d, accountId), progress: d.course };
+  }
+
+  function resetCourse(accountId) {
+    const d = getData(accountId);
+    d.course = {};
+    /* 顺带清掉课程自检的勾选（键名统一以 course: 开头） */
+    if (d.checklist && typeof d.checklist === 'object') {
+      Object.keys(d.checklist).forEach(function (k) {
+        if (k.indexOf('course:') === 0) delete d.checklist[k];
+      });
+    }
+    return { ok: saveData(d, accountId) };
+  }
+
   /* ---------------- 妆容实拍参考图（按妆容 id 存） ---------------- */
   const PHOTO_KEY = 'makeup_look_photos_v1';
 
@@ -298,6 +327,9 @@ window.STORE = (function () {
     getChecklist: getChecklist,
     setChecklist: setChecklist,
     clearChecklist: clearChecklist,
+    getCourseProgress: getCourseProgress,
+    markLesson: markLesson,
+    resetCourse: resetCourse,
     usage: usage
   };
 })();

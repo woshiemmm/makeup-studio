@@ -45,6 +45,33 @@ function buildBody(D) {
 
   out.push('<p class="gd-cta"><a class="btn primary" href="./">→ 打开妆造教学应用</a></p>');
 
+  /* ---- 零基础课程（对搜索最有价值的一块内容）---- */
+  if (D.course && Array.isArray(D.course.chapters) && D.course.chapters.length) {
+    let total = 0;
+    D.course.chapters.forEach(function (ch) { total += (ch.lessons || []).length; });
+    out.push('<h2 class="ov-h">零基础课程（' + total + ' 节）</h2>');
+    if (D.course.intro) out.push('<p class="gd-lead">' + esc(D.course.intro) + '</p>');
+    D.course.chapters.forEach(function (ch) {
+      out.push('<h3 class="gd-sub">' + esc(ch.icon || '') + ' ' + esc(ch.title || '') + '</h3>');
+      if (ch.goal) out.push('<p class="gd-lead">' + esc(ch.goal) + '</p>');
+      out.push('<div class="ov-lessons">');
+      (ch.lessons || []).forEach(function (lo) {
+        out.push('  <article class="ov-lesson">');
+        out.push('    <h5><a href="./#/course/' + esc(lo.id) + '">' + esc(lo.title) + '</a>' +
+          ' <small>约 ' + (lo.minutes || 0) + ' 分钟</small></h5>');
+        if (lo.goal) out.push('    <p class="ov-tag">' + esc(lo.goal) + '</p>');
+        if (lo.points && lo.points.length) {
+          out.push('    <ul class="ov-points">' + lo.points.map(function (p) {
+            return '<li><b>' + esc(p.t) + '</b>：' + esc(p.d) + '</li>';
+          }).join('') + '</ul>');
+        }
+        if (lo.key) out.push('    <p class="ov-key">一句话记住：' + esc(lo.key) + '</p>');
+        out.push('  </article>');
+      });
+      out.push('</div>');
+    });
+  }
+
   /* ---- 妆容 ---- */
   out.push('<h2 class="ov-h">' + D.looks.length + ' 种妆容风格</h2>');
   const byGroup = {};
@@ -104,15 +131,21 @@ function buildBody(D) {
 
 /* ---------------- 页面 ---------------- */
 function buildPage(D) {
-  const title = '全部妆容与完整化妆流程一览 · 妆 · 妆造教学';
-  const desc = D.looks.length + ' 种妆容风格（含日常女妆、男生妆容、Cos 舞台）与从妆前准备到妆后护肤的 ' +
-    D.stages.length + ' 步完整化妆流程，含具体做法、要点与所需产品。';
+  const courseTotal = (D.course && Array.isArray(D.course.chapters))
+    ? D.course.chapters.reduce(function (a, c) { return a + ((c.lessons || []).length); }, 0)
+    : 0;
+  const title = '新手化妆教程' + (courseTotal ? '：' + courseTotal + ' 节零基础课程' : '') +
+    ' + ' + D.looks.length + ' 种妆容与完整流程一览 · 妆 · 妆造教学';
+  const desc = (courseTotal
+      ? courseTotal + ' 节零基础化妆自学课程（原理 → 实操 → 练习 → 自检 → 完整妆容），' : '') +
+    D.looks.length + ' 种妆容风格（含日常女妆、男生妆容、Cos 舞台）与从妆前准备到妆后护肤的 ' +
+    D.stages.length + ' 步完整化妆流程，含具体做法、要点、常见错误与配套视频。';
   return '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n' +
 '<meta charset="UTF-8" />\n' +
 '<meta name="viewport" content="width=device-width, initial-scale=1" />\n' +
 '<title>' + esc(title) + '</title>\n' +
 '<meta name="description" content="' + esc(desc) + '" />\n' +
-'<meta name="keywords" content="化妆教程,妆容大全,化妆流程,男生化妆,cos妆,新手化妆步骤" />\n' +
+'<meta name="keywords" content="新手化妆,零基础学化妆,化妆入门,化妆教程,化妆课程,妆容大全,化妆流程,男生化妆,cos妆" />\n' +
 '<link rel="canonical" href="' + SITE + '/guide.html" />\n' +
 '<link rel="icon" href="favicon.svg" type="image/svg+xml" />\n' +
 '<link rel="stylesheet" href="styles.css" />\n' +
@@ -125,6 +158,17 @@ function buildPage(D) {
 '  .gd-cta { margin: 0 0 30px; }\n' +
 '  .gd-cta a { text-decoration: none; display: inline-block; }\n' +
 '  .gd-sub { font-size: 15px; margin: 22px 0 12px; color: var(--primary-2); }\n' +
+  '  .ov-lessons { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 10px; }\n' +
+  '  .ov-lesson { background: var(--card); border: 1px solid var(--line);\n' +
+  '               border-radius: 14px; padding: 14px 16px; }\n' +
+  '  .ov-lesson h5 { margin: 0 0 6px; font-size: 14px; line-height: 1.6; }\n' +
+  '  .ov-lesson h5 a { color: var(--ink); text-decoration: none; }\n' +
+  '  .ov-lesson h5 a:hover { color: var(--primary-2); }\n' +
+  '  .ov-lesson h5 small { color: var(--ink-faint); font-weight: 400; font-size: 11.5px; }\n' +
+  '  .ov-points { margin: 6px 0 0; padding-left: 18px; }\n' +
+  '  .ov-points li { font-size: 12.5px; color: var(--ink-soft); line-height: 1.8; margin-bottom: 5px; }\n' +
+  '  .ov-points b { color: var(--ink); }\n' +
+  '  .ov-key { margin: 10px 0 0; font-size: 12.5px; font-weight: 700; color: var(--primary-2); }\n' +
 '  .gd-foot { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line);\n' +
 '             color: var(--ink-faint); font-size: 12.5px; }\n' +
 '</style>\n' +
@@ -151,8 +195,11 @@ function main() {
     console.log('· guide.html 无变化');
   } else {
     fs.writeFileSync(OUT, html, 'utf8');
-    console.log('✓ 已生成 guide.html：' + D.looks.length + ' 种妆容 + ' +
-      D.stages.length + ' 个阶段，' + Math.round(html.length / 1024) + ' KB');
+    const courseTotal = (D.course && Array.isArray(D.course.chapters))
+      ? D.course.chapters.reduce(function (a, c) { return a + ((c.lessons || []).length); }, 0) : 0;
+    console.log('✓ 已生成 guide.html：' + (courseTotal ? courseTotal + ' 节课 + ' : '') +
+      D.looks.length + ' 种妆容 + ' + D.stages.length + ' 个阶段，' +
+      Math.round(Buffer.byteLength(html, 'utf8') / 1024) + ' KB');
   }
 
   /* 顺手把 sitemap 补上 guide.html */
