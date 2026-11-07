@@ -232,6 +232,81 @@ window.VISION = (function () {
     return { avg, brightness, avgSat, avgVal, buckets, dominant, warmRatio, topCount: top };
   }
 
+  /* ============ 面对面教学：色调整合度 ============
+   * 比较两份 analyzeColors 结果，返回 0~100。
+   * 用途：上课时判断「此刻的整体色调离目标有多远」。
+   * 注意：这只衡量配色，不判断形状、位置和手法 —— 界面上必须这么标。
+   */
+  function compareAnalyses(a, b) {
+    if (!a || !b) return null;
+    const dist = Math.sqrt(
+      Math.pow(a.avg.r - b.avg.r, 2) +
+      Math.pow(a.avg.g - b.avg.g, 2) +
+      Math.pow(a.avg.b - b.avg.b, 2)
+    );                                                     // 0 ~ 441
+    const colorScore = 1 - Math.min(1, dist / 260);
+    const brightScore = 1 - Math.min(1, Math.abs(a.brightness - b.brightness) / 120);
+    const satScore = 1 - Math.min(1, Math.abs(a.avgSat - b.avgSat) / 0.45);
+
+    let dot = 0, na = 0, nb = 0;
+    const keys = Object.keys(a.buckets || {});
+    keys.forEach(function (k) {
+      const x = (a.buckets && a.buckets[k]) || 0;
+      const y = (b.buckets && b.buckets[k]) || 0;
+      dot += x * y; na += x * x; nb += y * y;
+    });
+    const histScore = (na && nb) ? dot / Math.sqrt(na * nb) : 0;
+
+    const score = colorScore * 0.4 + brightScore * 0.2 + satScore * 0.15 + histScore * 0.25;
+    return Math.max(0, Math.min(100, Math.round(score * 100)));
+  }
+
+  /* 没有参考图时（比如只给了 40 款预设妆容的名字），
+   * 用它的调色板合成一份「参考分析」，用来算色调吻合度。 */
+  function paletteToAnalysis(palette) {
+    const list = (palette || []).filter(function (c) { return /^#[0-9a-f]{3,8}$/i.test(String(c)); });
+    if (!list.length) return null;
+    /* 本文件自己的 hex → rgb（别用界面层那个同名函数，它不在这个作用域） */
+    const toRgb = function (hex) {
+      let h = String(hex || '').replace('#', '');
+      if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+      const v = parseInt(h.slice(0, 6), 16);
+      if (isNaN(v)) return { r: 128, g: 128, b: 128 };
+      return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
+    };
+    const buckets = { red: 0, orange: 0, yellow: 0, green: 0, blue: 0, purple: 0, pink: 0, neutral: 0, dark: 0 };
+    let r = 0, g = 0, b = 0, sat = 0, val = 0;
+    list.forEach(function (hex) {
+      const p = toRgb(hex);
+      const hsv = hexHSV(hex);
+      r += p.r; g += p.g; b += p.b;
+      sat += hsv.s; val += hsv.v;
+      const lum = (p.r + p.g + p.b) / 3;
+      if (lum < 50) { buckets.dark += 40; return; }
+      if (hsv.s < 0.14) { buckets.neutral += 40; return; }
+      const h = hsv.h;
+      if (h < 15 || h >= 345) buckets.red += 40;
+      else if (h < 45) buckets.orange += 40;
+      else if (h < 70) buckets.yellow += 40;
+      else if (h < 165) buckets.green += 40;
+      else if (h < 250) buckets.blue += 40;
+      else if (h < 300) buckets.purple += 40;
+      else buckets.pink += 40;
+    });
+    const n = list.length;
+    const avg = { r: r / n, g: g / n, b: b / n };
+    return {
+      avg: avg,
+      brightness: (avg.r + avg.g + avg.b) / 3,
+      avgSat: sat / n,
+      avgVal: val / n,
+      buckets: buckets,
+      dominant: '',
+      warmRatio: 0.5,
+      topCount: 40
+    };
+  }
+
   /* ============ 颜色 → 妆容匹配（演示模式） ============ */
   /* ============ 颜色 → 妆容匹配 ============
    * 这里不写死分数表 —— 每个妆容的特征直接由它自己的调色板推导出来。
@@ -2647,6 +2722,8 @@ window.VISION = (function () {
     compressImageFile: compressImageFile,
     prepareForAPI: prepareForAPI,
     analyzeColors: analyzeColors,
+    compareAnalyses: compareAnalyses,
+    paletteToAnalysis: paletteToAnalysis,
     matchLookByColor: matchLookByColor,
     inferSkinFromImage: inferSkinFromImage,
     checkQuizCompleteness: checkQuizCompleteness,

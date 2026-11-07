@@ -2497,6 +2497,138 @@ ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
   .crt-actions .btn { flex: 1 1 auto; }
 }
 
+/* ============================================================
+ * 面对面教学
+ * ============================================================ */
+.lv-note { border-left: 3px solid var(--warn); background: var(--warn-bg); }
+.lv-note b { display: block; font-size: 13px; color: #8a5a1e; margin-bottom: 6px; }
+.lv-note p { margin: 0; font-size: 12.5px; color: var(--ink-soft); line-height: 1.85; }
+.lv-note b b { display: inline; }
+
+.lv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; margin: 12px 0 16px; }
+.lv-look {
+  display: flex; flex-direction: column; overflow: hidden;
+  border-radius: var(--radius-sm); border: 1px solid var(--line);
+  background: var(--card); text-decoration: none; color: inherit;
+  transition: border-color .2s var(--ease), transform .2s var(--ease), box-shadow .2s var(--ease);
+}
+.lv-look:hover { border-color: rgba(var(--primary-rgb), 0.45); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+.lv-look-band { display: block; height: 34px; }
+.lv-look b { display: block; font-size: 13px; color: var(--ink); padding: 9px 10px 2px; }
+.lv-look small { display: block; font-size: 11px; color: var(--ink-faint); padding: 0 10px 10px; }
+
+.lv-alt { display: flex; flex-wrap: wrap; gap: 10px; }
+.lv-alt .btn { text-decoration: none; }
+
+.lv-back { margin-left: 10px; font-size: 12.5px; color: var(--primary-2); text-decoration: none; }
+.lv-back:hover { text-decoration: underline; }
+
+.lv-target { display: flex; gap: 14px; align-items: flex-start; }
+.lv-target-img { width: 104px; height: 104px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); flex: 0 0 auto; }
+.lv-target-body { flex: 1 1 auto; min-width: 0; }
+.lv-target-body b { display: block; font-size: 15px; color: var(--ink); margin-bottom: 8px; }
+.lv-target-body p { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-soft); line-height: 1.8; white-space: pre-wrap; }
+.lv-swatch { display: flex; gap: 6px; }
+.lv-swatch i { width: 20px; height: 20px; border-radius: 6px; border: 1px solid rgba(0,0,0,.08); }
+
+.lv-profile { margin: 6px 0 14px; font-size: 13px; color: var(--ink); line-height: 1.85; }
+.lv-profile-empty { color: var(--ink-faint); }
+
+.lv-toggle { display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border-radius: var(--radius-sm);
+  background: var(--bg-grad-2); cursor: pointer; }
+.lv-toggle input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; flex: 0 0 auto; }
+.lv-toggle b { display: block; font-size: 13px; color: var(--ink); margin-bottom: 3px; }
+.lv-toggle small { display: block; font-size: 11.5px; color: var(--ink-soft); line-height: 1.75; }
+.lv-toggle-sm { background: transparent; padding: 0; align-items: center; }
+.lv-toggle-sm span { font-size: 12px; color: var(--ink-soft); }
+
+.lv-cos-tag { color: #b8556e; }
+.lv-normal-tag { color: var(--ok); }
+
+/* ---- 摄像头 ---- */
+.lv-cam-card { padding: 16px 18px; }
+.lv-cam-wrap { position: relative; border-radius: var(--radius-sm); overflow: hidden; background: #14101a; }
+.lv-video { display: block; width: 100%; max-height: 46vh; object-fit: cover; transform: scaleX(-1); background: #14101a; }
+.lv-cam-off {
+  position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px;
+  align-items: center; justify-content: center; color: #cdc6d6; font-size: 13px; text-align: center; padding: 18px;
+}
+.lv-cam-off small { font-size: 11.5px; color: #9c93a8; }
+.lv-cam-badge {
+  position: absolute; left: 10px; bottom: 10px;
+  font-size: 11.5px; font-weight: 700; padding: 5px 11px; border-radius: 999px;
+  background: rgba(20, 16, 26, .72); color: #fff;
+}
+.lv-cam-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
+
+/* ---- 步骤 ---- */
+.lv-step-card { padding: 18px 20px; }
+.lv-progress { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.lv-progress-bar { flex: 1 1 auto; height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.lv-progress-bar i { display: block; height: 100%; border-radius: 999px; background: var(--primary-grad); transition: width .4s var(--ease); }
+.lv-progress span { flex: 0 0 auto; font-size: 12px; color: var(--ink-soft); }
+.lv-summary { margin: 0 0 14px; font-size: 12.5px; color: var(--ink-soft); line-height: 1.85;
+  padding: 10px 12px; border-radius: var(--radius-xs); background: var(--primary-faint); }
+
+.lv-step { border-radius: var(--radius-sm); border: 1px solid var(--line); padding: 14px 16px; background: var(--card); }
+.lv-step-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.lv-step-no { width: 26px; height: 26px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; font-size: 12px; font-weight: 800; color: #fff; background: var(--primary-grad); }
+.lv-step-stage { font-size: 13px; font-weight: 700; color: var(--primary-2); background: var(--primary-soft);
+  padding: 2px 10px; border-radius: 8px; }
+.lv-say { margin-left: auto; font-size: 11.5px; padding: 5px 10px; }
+.lv-step-how { margin: 0; font-size: 14px; color: var(--ink); line-height: 1.95; }
+.lv-step-done { margin: 10px 0 0; font-size: 12.5px; color: var(--ok); line-height: 1.8; }
+.lv-step-hint { margin: 10px 0 0; font-size: 12px; color: var(--ink-soft); line-height: 1.8; }
+.lv-step-nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; }
+
+/* ---- 记录 ---- */
+.lv-log { display: flex; flex-direction: column; gap: 9px; }
+.lv-log-empty { margin: 0; font-size: 12.5px; color: var(--ink-faint); line-height: 1.8; }
+.lv-log-item { padding: 11px 13px; border-radius: var(--radius-sm); background: var(--card);
+  border: 1px solid var(--line); border-left-width: 3px; }
+.lv-log-item.is-ok { border-left-color: var(--ok); background: var(--ok-bg); }
+.lv-log-item.is-mid { border-left-color: var(--warn); background: var(--warn-bg); }
+.lv-log-item.is-bad { border-left-color: var(--danger); background: var(--danger-bg); }
+.lv-verdict { display: inline-block; font-size: 11px; font-weight: 800; padding: 2px 9px;
+  border-radius: 8px; background: rgba(0,0,0,.06); color: var(--ink); margin-bottom: 6px; }
+.lv-log-text { font-size: 13px; color: var(--ink); line-height: 1.85; }
+.lv-log-item small { display: inline-block; margin-top: 6px; margin-right: 10px; font-size: 11px; color: var(--ink-faint); }
+
+/* ---- 结课 ---- */
+.lv-finish { padding: 20px; }
+.lv-finish > b { display: block; font-size: 16px; color: var(--ink); margin-bottom: 10px; }
+.lv-finish-line { margin: 0 0 8px; font-size: 13.5px; color: var(--ink); line-height: 1.9; }
+.lv-finish-line .is-ok { color: var(--ok); }
+.lv-finish-line .is-mid { color: var(--warn); }
+.lv-finish-meta { margin: 0 0 16px; font-size: 12px; color: var(--ink-faint); }
+.lv-finish-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.lv-finish-actions .btn { text-decoration: none; }
+
+/* ---- 搜索结果里的「用它教」 ---- */
+.srch-row { display: flex; align-items: stretch; gap: 8px; }
+.srch-row .srch-item { flex: 1 1 auto; min-width: 0; }
+.srch-live {
+  flex: 0 0 auto; align-self: center;
+  font-size: 11.5px; font-weight: 700; white-space: nowrap;
+  padding: 7px 11px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(var(--primary-rgb), 0.4);
+  background: var(--primary-faint); color: var(--primary-2);
+  transition: background .18s var(--ease), border-color .18s var(--ease);
+}
+.srch-live:hover { background: var(--primary-soft); border-color: var(--primary); }
+
+@media (max-width: 640px) {
+  .lv-grid { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); }
+  .lv-target { flex-direction: column; }
+  .lv-target-img { width: 100%; height: 160px; }
+  .lv-step-nav { flex-direction: column; }
+  .lv-step-nav .btn { width: 100%; }
+  .lv-cam-tools { gap: 10px; }
+  .srch-row { flex-direction: column; }
+  .srch-live { align-self: flex-start; margin: -4px 0 4px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .001ms !important;

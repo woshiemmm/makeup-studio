@@ -18,7 +18,8 @@
     processLook: '',          // 「化妆流程」板块当前指定的妆容，空 = 标准流程
     lookGroup: 'all',         // 选妆分类筛选：all / female / male / cos
     lookScenes: [],           // 选妆场合筛选（可多选）
-    tutor: {}                 // AI 小老师：{ [lessonId]: { log: [], img: '' } }，切课再回来能续上
+    tutor: {},                // AI 小老师：{ [lessonId]: { log: [], img: '' } }，切课再回来能续上
+    live: null                // 面对面教学会话状态（见 liveState()）
   };
 
   const $ = function (sel) { return document.querySelector(sel); };
@@ -63,14 +64,15 @@
    *       #/teach/natural    → 清透裸妆的教学
    *       #/process          → 化妆流程
    */
-  const VIEWS = ['course', 'teach', 'process', 'recognize', 'analysis', 'shop', 'settings'];
+  const VIEWS = ['course', 'teach', 'process', 'recognize', 'analysis', 'shop', 'live', 'settings'];
 
-  /* 解析地址栏的 hash。第二个路径段对 teach 是妆容 id，对 shop 是品类 id */
+  /* 解析地址栏的 hash。第二个路径段对 teach 是妆容 id，对 shop 是品类 id，
+   * 对 live 是「来源类型」，第三段（rest）才是具体参数 */
   function currentRoute() {
     const raw = (typeof location !== 'undefined' && location.hash) ? location.hash : '';
     const parts = raw.replace(/^#\/?/, '').split('/').filter(function (s) { return s; });
     const view = VIEWS.indexOf(parts[0]) >= 0 ? parts[0] : 'teach';
-    return { view: view, look: parts[1] || '', raw: raw };
+    return { view: view, look: parts[1] || '', rest: parts.slice(2), raw: raw };
   }
 
   /* 跳转到某个视图（会写入历史记录，因此返回键可用） */
@@ -88,6 +90,10 @@
 
   function applyRoute() {
     const r = currentRoute();
+
+    /* 离开面对面教学页时立刻关摄像头、停定时器 —— 别让它在后台一直开着 */
+    if (r.view !== 'live') liveStop(true);
+
     syncNav(routeKey(r));            // 维护站内导航栈（供悬浮返回按钮使用）
 
     $$('.nav-item').forEach(function (b) { b.classList.toggle('active', b.dataset.view === r.view); });
@@ -97,6 +103,8 @@
       renderProcess();
     } else if (r.view === 'course') {
       renderCourse(r.look);            // r.look 这里是课时 id，空表示课程目录
+    } else if (r.view === 'live') {
+      renderLive(r.look, r.rest);      // r.look = 来源类型，r.rest = 参数
     } else if (r.view === 'shop') {
       renderShopPage(r.look);          // r.look 这里是品类 id，空表示显示目录
     } else if (r.view === 'teach') {
@@ -1301,6 +1309,8 @@
       // 等待图片就绪
       if (!img.complete || !img.naturalWidth) { await new Promise(function (r) { img.onload = r; }); }
       const result = await V.recognizeLook(img, cfg);
+      /* 把原图也存下来：面对面教学要用它当「目标参考图」算相似度 */
+      try { result.sourceImage = img.src || ''; } catch (e) { result.sourceImage = ''; }
       state.lastRecognize = result;                       // 供「保存到我的妆容」使用
       $('#btn-save-look').disabled = false;
       renderRecognizeResult(result);
@@ -1466,14 +1476,28 @@
       (failed.length ? '，' + failed.length + ' 个词没抓到' : '') + '：</p>' +
       '<div class="srch-list">' + all.slice(0, 12).map(function (x) {
         const isBili = x.src === 'bilibili';
-        return '<a class="srch-item' + (isBili ? ' is-bili' : '') + '" href="' + escapeHtml(x.url) +
+        return '<div class="srch-row">' +
+          '<a class="srch-item' + (isBili ? ' is-bili' : '') + '" href="' + escapeHtml(x.url) +
           '" target="_blank" rel="noopener">' +
           '<b>' + (isBili ? '<span class="srch-tag">B站</span>' : '') + escapeHtml(x.title) + '</b>' +
           (x.meta ? '<em>' + escapeHtml(x.meta) + '</em>' : '') +
           (x.snippet ? '<span>' + escapeHtml(x.snippet.slice(0, 130)) + '</span>' : '') +
           '<i>' + escapeHtml(x.q) + '</i>' +
-        '</a>';
+          '</a>' +
+          '<button type="button" class="srch-live" data-live-title="' + escapeHtml(x.title) +
+            '" title="用这个风格备课，面对面教你">🎥 用它教</button>' +
+        '</div>';
       }).join('') + '</div>';
+
+    /* 「用它教」：把这一条的风格标题带进面对面教学备课 */
+    box.querySelectorAll('[data-live-title]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        const title = b.dataset.liveTitle || '';
+        if (!title) return;
+        const want = '#/live/search/' + encodeURIComponent(title);
+        if (location.hash === want) applyRoute(); else location.hash = want;
+      });
+    });
   }
 
   function renderRecognizeResult(r) {
@@ -1583,6 +1607,7 @@
 
     parts.push('<div class="apply-box">' +
       '<button class="btn primary" id="btn-go-look" type="button">🎨 去学习「' + E(look.name) + '」的完整教学 →</button>' +
+      (r.restore ? '<button class="btn ghost" id="btn-live-recognize" type="button">🎥 用这张图面对面教我</button>' : '') +
       '</div>');
 
     box.innerHTML = parts.join('');
@@ -1590,6 +1615,14 @@
     /* ---- 事件绑定 ---- */
     const goBtn = $('#btn-go-look');
     if (goBtn) goBtn.addEventListener('click', function () { selectLook(look.id); });
+
+    const liveRec = $('#btn-live-recognize');
+    if (liveRec) {
+      liveRec.addEventListener('click', function () {
+        const want = '#/live/restore';
+        if (location.hash === want) applyRoute(); else location.hash = want;
+      });
+    }
 
     box.querySelectorAll('[data-rank-look]').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -4180,6 +4213,778 @@
     if (ab) ab.addEventListener('click', function () { send('ask'); });
   }
 
+  /* ============ 面对面教学（通话式逐步指导） ============
+   * 说明一下「实时」到底是什么：
+   *   DeepSeek 的 API 是请求-响应，没有视频流。所以这里的「面对面」是
+   *   「定时抓一帧 → 小老师看 → 语音说出来」的循环，不是真正的视频通话。
+   *
+   * 流程刻意分成两段（对应「先学会这个妆容再去教用户」）：
+   *   ① 备课：把目标妆容 + 我的脸型眼型肤质交给 AI，产出一份带完成标准的计划
+   *   ② 上课：按计划一步步走，中间随时抓帧让它对照计划判断
+   *
+   * cos 妆和日常妆是两套标准：
+   *   cos   —— 尽可能还原目标，允许夸张，相似度要求高
+   *   日常  —— 合适就好，可以偏离目标，相似度只作参考
+   */
+  const LIVE_COS_TARGET = 85;      // cos：色调吻合度目标线
+  const LIVE_NORMAL_TARGET = 70;   // 日常：参考线
+  const LIVE_MAX_CHECKS = 40;      // 一次会话最多让 AI 看多少帧（成本上限）
+
+  function liveState() {
+    if (!state.live) {
+      state.live = {
+        target: null, kind: '', cosMode: false,
+        profile: '', planText: '', plan: null, stepIndex: 0,
+        stream: null, timer: null, autoMs: 20000, autoOn: false, speech: true,
+        log: [], checks: 0, refAnalysis: null, lastSim: null,
+        pending: false, cameraError: '', camTried: false
+      };
+    }
+    return state.live;
+  }
+
+  function liveStop() {
+    const lv = state.live;
+    if (!lv) return;
+    if (lv.timer) { try { clearInterval(lv.timer); } catch (e) { } lv.timer = null; lv.autoOn = false; }
+    if (lv.stream) {
+      try { lv.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) { }
+      lv.stream = null;
+    }
+    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { }
+  }
+
+  /* 把目标妆容整理成 { name, desc, palette, image } */
+  function liveTargetFrom(kind, arg) {
+    if (kind === 'look' && arg) {
+      const look = D.looks.filter(function (l) { return l.id === arg; })[0];
+      if (!look) return null;
+      let photo = '';
+      try { photo = S.getLookPhoto(look.id) || ''; } catch (e) { photo = ''; }
+      return {
+        kind: 'look',
+        name: look.name,
+        desc: [look.name, look.tagline, look.desc, '配色：' + (look.palette || []).join(' '),
+          '难度：' + look.difficulty, '适合：' + look.occasion].join('\n'),
+        palette: look.palette || [],
+        image: photo,
+        isCos: look.group === 'cos'
+      };
+    }
+    if (kind === 'restore') {
+      const r = state.lastRecognize;
+      if (!r || !r.restore) return null;
+      const rs = r.restore;
+      const lines = ['风格：' + (rs.styleName || '')];
+      if (rs.summary) lines.push('整体：' + rs.summary);
+      if (rs.vibe) lines.push('气质：' + rs.vibe);
+      if (rs.skin) lines.push('底妆：' + [rs.skin.finish, rs.skin.coverage, rs.skin.shade, rs.skin.detail].filter(Boolean).join(' · '));
+      if (rs.brow) lines.push('眉毛：' + [rs.brow.shape, rs.brow.thickness, rs.brow.color, rs.brow.detail].filter(Boolean).join(' · '));
+      if (rs.eye) {
+        const sh = (rs.eye.shadows || []).map(function (s) {
+          return [s.color, s.hex, s.where, s.texture].filter(Boolean).join(' ');
+        }).join('；');
+        lines.push('眼影：' + sh);
+        if (rs.eye.liner) lines.push('眼线：' + rs.eye.liner);
+        if (rs.eye.lashes) lines.push('睫毛：' + rs.eye.lashes);
+        if (rs.eye.extra) lines.push('其他：' + rs.eye.extra);
+      }
+      if (rs.cheek) lines.push('腮红：' + [rs.cheek.color, rs.cheek.hex, rs.cheek.where, rs.cheek.how].filter(Boolean).join(' '));
+      if (rs.contour) lines.push('修容：' + rs.contour);
+      if (rs.lip) lines.push('唇妆：' + [rs.lip.color, rs.lip.hex, rs.lip.texture, rs.lip.shape].filter(Boolean).join(' '));
+      const pal = [];
+      (rs.eye && rs.eye.shadows || []).forEach(function (s) { if (s.hex) pal.push(s.hex); });
+      if (rs.cheek && rs.cheek.hex) pal.push(rs.cheek.hex);
+      if (rs.lip && rs.lip.hex) pal.push(rs.lip.hex);
+      return {
+        kind: 'restore',
+        name: rs.styleName || '识别出的妆容',
+        desc: lines.join('\n'),
+        palette: pal,
+        image: r.sourceImage || '',
+        isCos: false
+      };
+    }
+    if (kind === 'search' && arg) {
+      const title = String(arg).replace(/-/g, ' ');
+      return {
+        kind: 'search',
+        name: title,
+        desc: '来自全网搜索参考：' + title +
+          '\n（注意：这是视频标题，你只能按标题推断风格，看不到视频画面 —— 不确定的地方要说明。）',
+        palette: [],
+        image: '',
+        isCos: /cos|二次元|动漫|漫展|角色/i.test(title)
+      };
+    }
+    if (kind === 'ref') {
+      const lv = liveState();
+      if (!lv.refImage) return null;
+      return {
+        kind: 'ref',
+        name: '上传的参考图',
+        desc: '目标妆容见附图。请按图里的颜色、范围、边界、层次来教。' + (lv.refNote ? '\n补充：' + lv.refNote : ''),
+        palette: [],
+        image: lv.refImage,
+        isCos: !!lv.cosMode
+      };
+    }
+    return null;
+  }
+
+  /* 我的个人条件：脸型 / 眼型 / 肤质 / 主要困扰 */
+  function liveProfileText() {
+    const bits = [];
+    try {
+      const p = S.getSkinProfile();
+      if (p) {
+        if (p.skinTypeTitle) bits.push('肤质：' + p.skinTypeTitle);
+        if (p.concerns && p.concerns.length) {
+          const c = p.concerns.map(function (x) { return typeof x === 'string' ? x : (x.name || x.label || ''); })
+            .filter(Boolean).slice(0, 4);
+          if (c.length) bits.push('主要困扰：' + c.join('、'));
+        }
+      }
+    } catch (e) { }
+    try {
+      const prefs = S.getPrefs();
+      const face = (D.faceShapes || []).filter(function (x) { return x.id === prefs.face; })[0];
+      const eye = (D.eyeShapes || []).filter(function (x) { return x.id === prefs.eye; })[0];
+      if (face) bits.push('脸型：' + face.name + '（' + (face.brief || '') + '）');
+      if (eye) bits.push('眼型：' + eye.name + '（' + (eye.brief || '') + '）');
+    } catch (e) { }
+    return bits.join('；');
+  }
+
+  /* 备课结果用「竖线分隔」的行格式，这里解析成结构 */
+  function parsePlan(text) {
+    const s = String(text || '').replace(/\r/g, '');
+    const lines = s.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+    let summary = '';
+    const steps = [];
+    lines.forEach(function (line) {
+      const seg = line.split('|').map(function (x) { return x.trim(); });
+      if (seg.length < 2) return;
+      if (/^总述/.test(seg[0])) { summary = seg.slice(1).join(' '); return; }
+      const no = parseInt(seg[0].replace(/[^\d]/g, ''), 10);
+      if (seg.length >= 4) {
+        steps.push({
+          no: isNaN(no) ? steps.length + 1 : no,
+          stage: seg[1],
+          how: seg[2],
+          done: seg.slice(3).join(' ')
+        });
+      } else if (seg.length >= 3) {
+        steps.push({ no: isNaN(no) ? steps.length + 1 : no, stage: seg[1], how: seg[2], done: '' });
+      }
+    });
+    /* 模型没按规定格式输出时，退化成「每行一步」，至少能用 */
+    if (!steps.length && lines.length) {
+      lines.forEach(function (line, i) {
+        if (/^总述/.test(line)) { summary = line.replace(/^总述\s*[:：|]?\s*/, ''); return; }
+        steps.push({ no: i + 1, stage: '', how: line.replace(/^\d+[.、|)]\s*/, ''), done: '' });
+      });
+    }
+    return { summary: summary, steps: steps };
+  }
+
+  function parseVerdict(text) {
+    const m = String(text || '').match(/结论\s*[:：]\s*(对了|再调整|偏了)/);
+    return m ? m[1] : '';
+  }
+
+  /* ---------- 语音播报（浏览器自带，不花钱） ---------- */
+  function liveSpeak(text) {
+    const lv = liveState();
+    if (!lv.speech) return;
+    try {
+      if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
+      window.speechSynthesis.cancel();
+      const u = new window.SpeechSynthesisUtterance(String(text || '').slice(0, 260));
+      u.lang = 'zh-CN';
+      u.rate = 1.05;
+      u.pitch = 1;
+      window.speechSynthesis.speak(u);
+    } catch (e) { /* 不支持就算了，不影响文字 */ }
+  }
+
+  /* ---------- 抓一帧（摄像头或画布） ---------- */
+  function liveGrabFrame() {
+    const lv = liveState();
+    const video = $('#lv-video');
+    if (!lv.stream || !video || !video.videoWidth) return '';
+    try {
+      const w = 560;
+      const h = Math.round(w * video.videoHeight / video.videoWidth) || 420;
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      if (!ctx) return '';
+      ctx.drawImage(video, 0, 0, w, h);
+      return c.toDataURL('image/jpeg', 0.8);
+    } catch (e) { return ''; }
+  }
+
+  /* 当前画面的「色调吻合度」：本地算，不花 token */
+  function liveSimilarity() {
+    const lv = liveState();
+    if (!lv.refAnalysis) return null;
+    const video = $('#lv-video');
+    if (!lv.stream || !video || !video.videoWidth) return null;
+    let cur = null;
+    try { cur = V.analyzeColors(video); } catch (e) { cur = null; }
+    if (!cur) return null;
+    const s = V.compareAnalyses(lv.refAnalysis, cur);
+    lv.lastSim = s;
+    return s;
+  }
+
+  /* ---------- 主渲染 ---------- */
+  function renderLive(kind, rest) {
+    const box = $('#live-body');
+    if (!box) return;
+    const lv = liveState();
+
+    /* 进入新目标 → 重置会话（除了重新进入同一个目标） */
+    const wantKey = kind + '/' + (rest && rest.length ? rest.join('/') : '');
+    if (kind && lv.kind !== wantKey) {
+      const t = liveTargetFrom(kind, rest && rest[0] ? decodeURIComponent(rest[0]) : '');
+      if (t) {
+        liveStop();
+        const cos = t.isCos || lv.cosMode;
+        state.live = {
+          target: t, kind: wantKey, cosMode: cos,
+          profile: liveProfileText(), planText: '', plan: null, stepIndex: 0,
+          stream: null, timer: null, autoMs: 20000, autoOn: false, speech: lv.speech !== false,
+          log: [], checks: 0, refAnalysis: null, lastSim: null,
+          pending: false, cameraError: '', camTried: false, refImage: lv.refImage, refNote: lv.refNote
+        };
+      } else {
+        lv.kind = '';
+        lv.target = null;
+      }
+    } else if (!kind) {
+      lv.kind = '';
+      lv.target = null;
+      lv.plan = null;
+      lv.planText = '';
+      lv.log = [];
+      lv.stepIndex = 0;
+      lv.checks = 0;
+      lv.lastSim = null;
+      lv.refAnalysis = null;
+    }
+
+    const cur = liveState();
+    if (!cur.target) renderLivePicker(box);
+    else if (!cur.plan) renderLivePrep(box);
+    else renderLiveClass(box);
+  }
+
+  /* 内部状态变化后的重渲染 —— 不经过路由解析，避免把目标妆容清掉 */
+  function rerenderLive() {
+    const box = $('#live-body');
+    if (!box) return;
+    const lv = liveState();
+    if (!lv.target) renderLivePicker(box);
+    else if (!lv.plan) renderLivePrep(box);
+    else renderLiveClass(box);
+  }
+
+  /* ---------- 选目标 ---------- */
+  function renderLivePicker(box) {
+    const lv = liveState();
+    const looks = D.looks;
+    const parts = [];
+    parts.push('<div class="page-head"><h2>面对面教学</h2>' +
+      '<p class="sub">选一个目标妆容，小老师**先备课**（结合你的脸型、眼型、肤质把它拆成带完成标准的步骤），' +
+      '然后按步骤带着你画；中间可以随时拍一帧让它看。</p></div>');
+
+    parts.push('<div class="card lv-note">' +
+      '<b>⚠️ 关于「实时」先说明白</b>' +
+      '<p>模型接口是请求-响应，没有视频流，所以这里是「<b>定时抓一帧 → 它看 → 语音说给你听</b>」的循环，' +
+      '不是真正的视频通话。摄像头画面只在你点「让它看」或开了自动检查时才发出去，关掉页面就停。</p>' +
+    '</div>');
+
+    parts.push('<div class="card"><div class="card-title"><h3>① 选目标妆容</h3>' +
+      '<span class="hint">选完再备课</span></div>');
+
+    parts.push('<div class="lv-grid">');
+    looks.slice(0, 40).forEach(function (l) {
+      const a = (l.palette || [])[0] || '#ec5f8a';
+      const b = (l.palette || [])[1] || a;
+      parts.push('<a class="lv-look" href="#/live/look/' + escapeHtml(l.id) + '">' +
+        '<span class="lv-look-band" style="background:linear-gradient(135deg,' + escapeHtml(a) + ',' + escapeHtml(b) + ')"></span>' +
+        '<b>' + escapeHtml(l.name) + '</b>' +
+        '<small>' + escapeHtml(l.difficulty) + ' · ' + escapeHtml(l.occasion) + '</small>' +
+        '</a>');
+    });
+    parts.push('</div>');
+
+    parts.push('<div class="lv-alt">' +
+      '<a class="btn ghost" href="#/live/restore">' + (state.lastRecognize && state.lastRecognize.restore ? '用刚才识别出的妆容' : '还没有识别结果') + '</a>' +
+      '<button class="btn ghost" id="lv-pick-ref">上传一张参考图</button>' +
+      '<input type="file" accept="image/*" id="lv-ref-file" hidden />' +
+    '</div>');
+    parts.push('</div>');
+
+    box.innerHTML = parts.join('');
+
+    const rf = $('#lv-ref-file');
+    const rbtn = $('#lv-pick-ref');
+    if (rbtn && rf) {
+      rbtn.addEventListener('click', function () { rf.click(); });
+      rf.addEventListener('change', function () {
+        const f = rf.files && rf.files[0];
+        if (!f) return;
+        rbtn.disabled = true;
+        rbtn.textContent = '正在读取图片…';
+        V.compressImageFile(f, 1024, 0.85).then(function (url) {
+          const st = liveState();
+          st.refImage = url;
+          st.refNote = '';
+          go('live', 'ref');
+        }).catch(function (e) {
+          rbtn.disabled = false;
+          rbtn.textContent = '上传一张参考图';
+          toast(e.message || '图片读不出来');
+        });
+      });
+    }
+  }
+
+  /* ---------- 备课 ---------- */
+  function renderLivePrep(box) {
+    const lv = liveState();
+    const t = lv.target;
+    const cos = lv.cosMode;
+    const parts = [];
+
+    parts.push('<div class="page-head"><h2>备课</h2>' +
+      '<p class="sub">小老师要先「学会」这个妆容，才谈得上教你。<a class="lv-back" href="#/live">← 换一个目标</a></p></div>');
+
+    parts.push('<div class="card lv-target">' +
+      (t.image ? '<img class="lv-target-img" src="' + escapeHtml(t.image) + '" alt="目标妆容" />' : '') +
+      '<div class="lv-target-body">' +
+        '<b>' + escapeHtml(t.name) + '</b>' +
+        (t.palette && t.palette.length ? '<div class="lv-swatch">' + t.palette.map(function (c) {
+          return '<i style="background:' + escapeHtml(c) + '"></i>';
+        }).join('') + '</div>' : '') +
+        '<p>' + escapeHtml(String(t.desc).slice(0, 400)) + '</p>' +
+      '</div>' +
+    '</div>');
+
+    parts.push('<div class="card">' +
+      '<div class="card-title"><h3>② 我这边的情况</h3>' +
+        '<span class="hint">决定它怎么为你调整</span></div>' +
+      (lv.profile
+        ? '<p class="lv-profile">' + escapeHtml(lv.profile) + '</p>'
+        : '<p class="lv-profile lv-profile-empty">还没填脸型/眼型/肤质 —— 它会按通用情况教。' +
+          '想让教学更贴合，去「肤质分析」做一次，或在教学页选你的眼型和脸型。</p>') +
+      '<label class="lv-toggle">' +
+        '<input type="checkbox" id="lv-cos"' + (cos ? ' checked' : '') + ' />' +
+        '<span><b>这是 cos 妆</b><small>' +
+          '勾上 = 尽可能还原目标（允许夸张、允许重，相似度要求高）<br>' +
+          '不勾 = 合适就好（按你的脸型调整，不必和目标一模一样）' +
+        '</small></span>' +
+      '</label>' +
+    '</div>');
+
+    parts.push('<div class="card"><div class="card-title"><h3>③ 开始备课</h3></div>' +
+      '<p class="hint" style="margin:0 0 12px">会让 AI 产出 6~9 个步骤，每步都带「做到什么程度算完成」的可判断标准。' +
+      '这一步会花一次调用（约 1400 token 上限）。</p>' +
+      '<button class="btn primary" id="lv-prepare"' + (lv.pending ? ' disabled' : '') + '>' +
+        (lv.pending ? '正在备课…' : '让小老师备课') + '</button>' +
+    '</div>');
+
+    box.innerHTML = parts.join('');
+
+    const cosEl = $('#lv-cos');
+    if (cosEl) {
+      cosEl.addEventListener('change', function () {
+        const st = liveState();
+        st.cosMode = !!cosEl.checked;
+        toast(st.cosMode ? '已切到 cos 标准：尽量还原' : '已切到日常标准：合适就好');
+      });
+    }
+
+    const btn = $('#lv-prepare');
+    if (btn) {
+      btn.addEventListener('click', function () {
+        const st = liveState();
+        if (st.pending) return;
+        /* 没有个人条件也允许，但要先问一句 —— confirmDialog 返回的是 Promise */
+        if (!st.profile) {
+          confirmDialog({
+            title: '还没有个人条件',
+            message: '你还没填脸型、眼型或肤质，小老师会按通用情况备课，贴合度会低一些。要继续吗？',
+            okText: '继续备课'
+          }).then(function (ok) { if (ok) livePrepare(); });
+          return;
+        }
+        livePrepare();
+      });
+    }
+  }
+
+  function livePrepare() {
+    const lv = liveState();
+    if (lv.pending) return;
+    lv.pending = true;
+    const btn = $('#lv-prepare');
+    if (btn) { btn.disabled = true; btn.textContent = '正在备课…'; }
+
+    const payload = {
+      mode: 'plan',
+      target: String(lv.target.desc || '').slice(0, 600) + (lv.target.image ? '\n（参考图见附图）' : ''),
+      profile: (lv.profile || '未提供') + (lv.cosMode ? '\n本次按 cos 标准：尽可能还原目标' : '\n本次按日常标准：合适就好'),
+      cosMode: !!lv.cosMode,
+      image: lv.target.image || ''
+    };
+
+    V.askTutor(payload).then(function (r) {
+      lv.pending = false;
+      lv.planText = r.reply;
+      if (r.blocked) {
+        toast('备课被拦下了：' + String(r.reply).slice(0, 40));
+        rerenderLive();
+        return;
+      }
+      const plan = parsePlan(r.reply);
+      lv.plan = plan;
+      lv.stepIndex = 0;
+      lv.log = [];
+      lv.checks = 0;
+      /* 参考分析：有图就用图，没图就用调色板推 */
+      lv.refAnalysis = null;
+      if (lv.target.image) {
+        try {
+          const img = new Image();
+          img.onload = function () {
+            try { lv.refAnalysis = V.analyzeColors(img); } catch (e) { }
+          };
+          img.src = lv.target.image;
+        } catch (e) { }
+      } else if (lv.target.palette && lv.target.palette.length) {
+        lv.refAnalysis = V.paletteToAnalysis(lv.target.palette);
+      }
+      if (!plan.steps.length) {
+        toast('备课结果没解析出步骤，换个目标再试试');
+        rerenderLive();
+        return;
+      }
+      toast('备课完成：' + plan.steps.length + ' 个步骤', { type: 'ok' });
+      rerenderLive();
+    }).catch(function (e) {
+      lv.pending = false;
+      if (btn) { btn.disabled = false; btn.textContent = '让小老师备课'; }
+      /* 别把异常吞了 —— 备课失败时至少能在控制台看到原因 */
+      try { console.error('[live] 备课失败', e); } catch (e2) { }
+      toast((e && e.message) ? e.message : '备课失败');
+    });
+  }
+
+  /* ---------- 上课 ---------- */
+  function renderLiveClass(box) {
+    const lv = liveState();
+    const plan = lv.plan || { steps: [], summary: '' };
+    const idx = Math.min(lv.stepIndex, plan.steps.length - 1);
+    const step = plan.steps[idx] || { stage: '', how: '', done: '' };
+    const total = plan.steps.length;
+    const pct = total ? Math.round(((idx + 1) / total) * 100) : 0;
+    const sim = lv.lastSim;
+    const parts = [];
+
+    parts.push('<div class="page-head"><h2>上课中</h2>' +
+      '<p class="sub">' + escapeHtml(lv.target.name) + ' · ' +
+      (lv.cosMode ? '<b class="lv-cos-tag">cos · 尽量还原</b>' : '<b class="lv-normal-tag">日常 · 合适就好</b>') +
+      '<a class="lv-back" href="#/live">← 换一个目标</a></p></div>');
+
+    /* 摄像头 */
+    parts.push('<div class="card lv-cam-card">' +
+      '<div class="lv-cam-wrap">' +
+        '<video id="lv-video" class="lv-video" autoplay muted playsinline></video>' +
+        (lv.stream ? '' : '<div class="lv-cam-off" id="lv-cam-off">摄像头没开' +
+          '<button class="btn primary" id="lv-cam-on">打开摄像头</button>' +
+          '<small>' + (lv.cameraError ? escapeHtml(lv.cameraError) : '画面只在你点检查时才发出去') + '</small></div>') +
+        '<div class="lv-cam-badge" id="lv-sim-badge">' +
+          (sim === null ? '色调吻合度：待测' : '色调吻合度：' + sim + '%') +
+        '</div>' +
+      '</div>' +
+      '<div class="lv-cam-tools">' +
+        '<button class="btn primary" id="lv-look-now"' + (lv.stream ? '' : ' disabled') + '>👀 让它看一下</button>' +
+        '<label class="lv-toggle lv-toggle-sm">' +
+          '<input type="checkbox" id="lv-auto"' + (lv.autoOn ? ' checked' : '') + ' />' +
+          '<span>自动检查（每 ' + Math.round(lv.autoMs / 1000) + ' 秒）</span>' +
+        '</label>' +
+        '<label class="lv-toggle lv-toggle-sm">' +
+          '<input type="checkbox" id="lv-speech"' + (lv.speech ? ' checked' : '') + ' />' +
+          '<span>语音播报</span>' +
+        '</label>' +
+        '<button class="btn ghost" id="lv-cam-off-btn"' + (lv.stream ? '' : ' hidden') + '>关摄像头</button>' +
+      '</div>' +
+      '<p class="hint">已让 AI 看 <b>' + lv.checks + '</b> / ' + LIVE_MAX_CHECKS + ' 次' +
+        (lv.refAnalysis ? '　·　相似度是按整体色调算的，不判断形状和手法' : '　·　没有参考图，算不出相似度') +
+      '</p>' +
+    '</div>');
+
+    /* 进度 + 当前步骤 */
+    parts.push('<div class="card lv-step-card">' +
+      '<div class="lv-progress"><div class="lv-progress-bar"><i style="width:' + pct + '%"></i></div>' +
+        '<span>第 ' + (idx + 1) + ' / ' + total + ' 步</span></div>' +
+      (plan.summary ? '<p class="lv-summary">' + escapeHtml(plan.summary) + '</p>' : '') +
+      '<div class="lv-step">' +
+        '<div class="lv-step-head">' +
+          '<span class="lv-step-no">' + (idx + 1) + '</span>' +
+          (step.stage ? '<span class="lv-step-stage">' + escapeHtml(step.stage) + '</span>' : '') +
+          '<button class="btn ghost lv-say" id="lv-say">🔊 读给我听</button>' +
+        '</div>' +
+        '<p class="lv-step-how">' + escapeHtml(step.how) + '</p>' +
+        (step.done ? '<p class="lv-step-done">✅ 完成标准：' + escapeHtml(step.done) + '</p>' : '') +
+        (sim !== null ? '<p class="lv-step-hint">当前色调吻合度 <b>' + sim + '%</b>' +
+          (lv.cosMode
+            ? (sim >= LIVE_COS_TARGET ? '　达到 cos 还原线（' + LIVE_COS_TARGET + '%）' : '　离 cos 还原线还差 ' + (LIVE_COS_TARGET - sim) + '%')
+            : (sim >= LIVE_NORMAL_TARGET ? '　够用了，不用死磕' : '　可以再调，但日常妆不必强求')) +
+          '</p>' : '') +
+      '</div>' +
+      '<div class="lv-step-nav">' +
+        '<button class="btn ghost" id="lv-prev"' + (idx <= 0 ? ' disabled' : '') + '>← 上一步</button>' +
+        '<button class="btn primary" id="lv-next">' + (idx >= total - 1 ? '完成这次教学' : '下一步 →') + '</button>' +
+      '</div>' +
+    '</div>');
+
+    /* 对话 / 判断记录 */
+    parts.push('<div class="card"><div class="card-title"><h3>💬 小老师说的</h3>' +
+      '<span class="hint">按顺序记下来</span></div>' +
+      '<div class="lv-log" id="lv-log">' + liveLogHtml(lv) + '</div>' +
+    '</div>');
+
+    box.innerHTML = parts.join('');
+
+    liveBindCamera(box);
+    liveBindControls(box);
+
+    /* 进入上课自动尝试开摄像头（失败就显示按钮让人手动开） */
+    if (!lv.stream) liveStartCamera();
+  }
+
+  function liveLogHtml(lv) {
+    if (!lv.log.length) {
+      return '<p class="lv-log-empty">还没让小老师看过。画到一定程度就点「让它看一下」。</p>';
+    }
+    return lv.log.map(function (m) {
+      const v = m.verdict;
+      const cls = v === '对了' ? 'is-ok' : v === '偏了' ? 'is-bad' : v === '再调整' ? 'is-mid' : '';
+      return '<div class="lv-log-item ' + cls + '">' +
+        (v ? '<span class="lv-verdict">' + escapeHtml(v) + '</span>' : '') +
+        '<div class="lv-log-text">' + escapeHtml(m.text).replace(/\n/g, '<br>') + '</div>' +
+        (m.sim !== null && m.sim !== undefined ? '<small>色调吻合度 ' + m.sim + '%</small>' : '') +
+        (m.step ? '<small>第 ' + m.step + ' 步</small>' : '') +
+      '</div>';
+    }).join('');
+  }
+
+  function liveBindCamera(box) {
+    const lv = liveState();
+    const on = box.querySelector('#lv-cam-on');
+    if (on) on.addEventListener('click', function () {
+      lv.camTried = false;   // 手动点才允许重试
+      liveStartCamera();
+    });
+    const off = box.querySelector('#lv-cam-off-btn');
+    if (off) off.addEventListener('click', function () {
+      liveStop();
+      toast('摄像头已关闭');
+      rerenderLive();
+    });
+    /* 已经有流时把画面接回去（重渲染后 video 元素是新的） */
+    const v = box.querySelector('#lv-video');
+    if (v && lv.stream) {
+      try { v.srcObject = lv.stream; v.play(); } catch (e) { }
+    }
+  }
+
+  function liveStartCamera() {
+    const lv = liveState();
+    if (lv.stream || lv.camTried) return;   // 已经试过就不再自动重试：
+    /* 以前这里没有这个闸，浏览器不支持摄像头时会变成
+     * liveStartCamera → rerenderLive → renderLiveClass → liveStartCamera 无限递归爆栈。 */
+    lv.camTried = true;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      lv.cameraError = '当前浏览器不支持摄像头（需要 https 或 localhost）';
+      rerenderLive();
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' }, audio: false })
+      .then(function (stream) {
+        lv.stream = stream;
+        lv.cameraError = '';
+        rerenderLive();
+      })
+      .catch(function (e) {
+        lv.cameraError = (e && e.name === 'NotAllowedError')
+          ? '你拒绝了摄像头权限。可以在地址栏左侧重新允许。'
+          : '打不开摄像头：' + ((e && e.message) || '未知原因');
+        rerenderLive();
+      });
+  }
+
+  function liveBindControls(box) {
+    const lv = liveState();
+    const plan = lv.plan || { steps: [] };
+
+    const say = box.querySelector('#lv-say');
+    if (say) say.addEventListener('click', function () {
+      const st = plan.steps[lv.stepIndex];
+      if (st) liveSpeak('第' + (lv.stepIndex + 1) + '步，' + (st.stage || '') + '。' + st.how + (st.done ? '。完成标准：' + st.done : ''));
+    });
+
+    const prev = box.querySelector('#lv-prev');
+    if (prev) prev.addEventListener('click', function () {
+      if (lv.stepIndex > 0) { lv.stepIndex--; rerenderLive(); }
+    });
+
+    const next = box.querySelector('#lv-next');
+    if (next) next.addEventListener('click', function () {
+      if (lv.stepIndex >= plan.steps.length - 1) { liveFinish(); return; }
+      lv.stepIndex++;
+      const st = plan.steps[lv.stepIndex];
+      if (st) liveSpeak('第' + (lv.stepIndex + 1) + '步，' + (st.stage || '') + '。' + st.how);
+      rerenderLive();
+    });
+
+    const lookNow = box.querySelector('#lv-look-now');
+    if (lookNow) lookNow.addEventListener('click', function () { liveCheck(); });
+
+    const auto = box.querySelector('#lv-auto');
+    if (auto) auto.addEventListener('change', function () {
+      lv.autoOn = !!auto.checked;
+      if (lv.autoOn) {
+        if (lv.timer) clearInterval(lv.timer);
+        lv.timer = setInterval(function () { liveCheck(true); }, lv.autoMs);
+        toast('已开自动检查（每 ' + Math.round(lv.autoMs / 1000) + ' 秒一次）');
+      } else if (lv.timer) {
+        clearInterval(lv.timer);
+        lv.timer = null;
+        toast('已关自动检查');
+      }
+      rerenderLive();
+    });
+
+    const sp = box.querySelector('#lv-speech');
+    if (sp) sp.addEventListener('change', function () {
+      lv.speech = !!sp.checked;
+      if (!lv.speech) { try { window.speechSynthesis.cancel(); } catch (e) { } }
+    });
+  }
+
+  /* 让它看一帧 */
+  function liveCheck(auto) {
+    const lv = liveState();
+    if (!lv.plan) return;
+    if (lv.checks >= LIVE_MAX_CHECKS) {
+      if (!auto) toast('这次教学的检查次数用完了（' + LIVE_MAX_CHECKS + ' 次），重新开始会重置');
+      if (lv.timer) { clearInterval(lv.timer); lv.timer = null; lv.autoOn = false; }
+      return;
+    }
+    const frame = liveGrabFrame();
+    if (!frame) {
+      if (!auto) toast('还拿不到画面，先打开摄像头');
+      return;
+    }
+    const sim = liveSimilarity();
+    const step = lv.plan.steps[lv.stepIndex] || {};
+
+    if (!auto) toast('让它看一下…');
+    livePatchSim(sim);
+
+    V.askTutor({
+      mode: 'check',
+      image: frame,
+      plan: planBrief(lv.plan),
+      stepIndex: lv.stepIndex,
+      target: (lv.target && lv.target.name) || '',
+      cosMode: !!lv.cosMode
+    }).then(function (r) {
+      lv.checks++;
+      const verdict = r.blocked ? '' : parseVerdict(r.reply);
+      lv.log.push({ text: r.reply, verdict: verdict, sim: sim, step: lv.stepIndex + 1 });
+      const logEl = $('#lv-log');
+      if (logEl) logEl.innerHTML = liveLogHtml(lv);
+      /* 把结论念出来 + 说下一步 */
+      if (!r.blocked) {
+        const said = verdict ? verdict + '。' : '';
+        liveSpeak(said + String(r.reply).replace(/^结论\s*[:：][^\n]*\n?/, '').slice(0, 200));
+      }
+      rerenderLive();
+    }).catch(function (e) {
+      toast((e && e.message) ? e.message : '这一帧没看成');
+    });
+  }
+
+  function planBrief(plan) {
+    const lines = [];
+    if (plan.summary) lines.push('总述：' + plan.summary);
+    (plan.steps || []).forEach(function (s) {
+      lines.push(s.no + '|' + (s.stage || '') + '|' + s.how + (s.done ? '|' + s.done : ''));
+    });
+    return lines.join('\n').slice(0, 900);
+  }
+
+  function livePatchSim(sim) {
+    const badge = $('#lv-sim-badge');
+    if (badge) {
+      badge.textContent = sim === null ? '色调吻合度：待测' : '色调吻合度：' + sim + '%';
+    }
+  }
+
+  /* 结课 */
+  function liveFinish() {
+    const lv = liveState();
+    const sim = lv.lastSim;
+    const line = lv.cosMode ? LIVE_COS_TARGET : LIVE_NORMAL_TARGET;
+    const ok = sim !== null && sim >= line;
+    const box = $('#live-body');
+    if (!box) return;
+
+    const parts = [];
+    parts.push('<div class="page-head"><h2>这次教学结束</h2></div>');
+    parts.push('<div class="card lv-finish">' +
+      '<b>' + escapeHtml(lv.target.name) + '</b>' +
+      '<p class="lv-finish-line">' +
+        (sim === null
+          ? '没有参考图，算不出色调吻合度 —— 但你自己对着镜子看，像不像比分数重要。'
+          : '色调吻合度 <b class="' + (ok ? 'is-ok' : 'is-mid') + '">' + sim + '%</b>　' +
+            (lv.cosMode
+              ? (ok ? '达到 cos 还原线（' + line + '% 以上）✓' : '离 cos 还原线差 ' + (line - sim) + '%，可以考虑再补一轮：重点在眼影范围和修容深浅')
+              : (ok ? '够用了 —— 日常妆合适就好，不用追着目标死磕' : '还可以再调；日常妆不必强求和目标一模一样'))) +
+      '</p>' +
+      '<p class="lv-finish-meta">共走了 ' + lv.plan.steps.length + ' 步 · 让它看了 ' + lv.checks + ' 次' +
+        ' · ' + (lv.cosMode ? 'cos 标准' : '日常标准') + '</p>' +
+      '<div class="lv-finish-actions">' +
+        '<button class="btn primary" id="lv-again">用同一个妆容再来一次</button>' +
+        '<a class="btn ghost" href="#/live">换个妆容</a>' +
+      '</div>' +
+    '</div>');
+
+    if (lv.log.length) {
+      parts.push('<div class="card"><div class="card-title"><h3>整个过程它说过什么</h3></div>' +
+        '<div class="lv-log">' + liveLogHtml(lv) + '</div></div>');
+    }
+
+    box.innerHTML = parts.join('');
+    liveStop();
+
+    const again = $('#lv-again');
+    if (again) again.addEventListener('click', function () {
+      lv.log = [];
+      lv.checks = 0;
+      lv.stepIndex = 0;
+      lv.lastSim = null;
+      rerenderLive();
+    });
+  }
+
   /* ============ 初始化 ============ */
   function init() {
     // 界面主题与风格（要尽早，避免闪一下默认配色）
@@ -4290,6 +5095,16 @@
         palette: look.palette, lookId: look.id, showTeach: false
       });
     });
+
+    // 面对面教当前妆容
+    const liveBtn = $('#btn-live-current');
+    if (liveBtn) {
+      liveBtn.addEventListener('click', function () {
+        if (!state.currentLook) { toast('先选一个妆容'); return; }
+        const want = '#/live/look/' + state.currentLook;
+        if (location.hash === want) applyRoute(); else location.hash = want;
+      });
+    }
 
     // 账号
     refreshAccountUI();

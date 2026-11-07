@@ -121,6 +121,9 @@
       <button class="nav-item" data-view="recognize">
         <span class="nav-icon">🔍</span> 妆容识别
       </button>
+      <button class="nav-item" data-view="live">
+        <span class="nav-icon">🎥</span> 面对面教学
+      </button>
       <button class="nav-item" data-view="analysis">
         <span class="nav-icon">🧖‍♀️</span> 肤质分析
       </button>
@@ -186,6 +189,7 @@
           </div>
           <div class="teach-actions">
             <button class="btn ghost" id="btn-preview-current">👁 参考图与教程</button>
+            <button class="btn primary" id="btn-live-current">🎥 面对面教我这个妆</button>
           </div>
         </div>
         <div class="look-intro" id="teach-look-intro"></div>
@@ -212,6 +216,11 @@
     <!-- 新手课程视图（从 0 基础开始的长期自学课程） -->
     <section class="view" id="view-course">
       <div id="course-body"></div>
+    </section>
+
+    <!-- 面对面教学视图（通话式逐步指导） -->
+    <section class="view" id="view-live">
+      <div id="live-body"></div>
     </section>
 
     <!-- 化妆流程视图（独立大板块） -->
