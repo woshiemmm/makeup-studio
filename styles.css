@@ -2643,6 +2643,75 @@ ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
   .srch-live { align-self: flex-start; margin: -4px 0 4px; }
 }
 
+/* ============================================================
+ * 直播课
+ * ============================================================ */
+.lv-stage { padding: 16px 18px; }
+.lv-stage-top { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.lv-stage-top b { font-size: 13px; color: var(--ink); }
+.lv-live-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #e2464f; flex: 0 0 auto;
+  animation: lvPulse 1.4s infinite;
+}
+@keyframes lvPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .35; transform: scale(.8); }
+}
+.lv-stage-prog { margin-left: auto; font-size: 11.5px; color: var(--ink-faint); }
+
+.lv-board {
+  border-radius: var(--radius-sm);
+  background: var(--bg-grad-2);
+  border: 1px solid var(--line);
+  padding: 16px;
+  min-height: 110px;
+}
+.lv-board-type {
+  display: inline-block; font-size: 11px; font-weight: 800;
+  padding: 3px 10px; border-radius: 8px; margin-bottom: 10px;
+  background: var(--primary-soft); color: var(--primary-2);
+}
+.lv-board-text {
+  margin: 0; font-size: 15.5px; line-height: 2; color: var(--ink);
+  letter-spacing: .01em;
+}
+.lv-stage .lv-progress { margin: 12px 0 10px; }
+
+.lv-ctrl { display: flex; flex-wrap: wrap; gap: 8px; }
+.lv-ctrl-tight { margin: 10px 0; }
+
+.lv-cam-mini { position: relative; margin: 10px 0; border-radius: var(--radius-sm); overflow: hidden; }
+.lv-cam-mini .lv-video { max-height: 26vh; border-radius: var(--radius-sm); }
+.lv-cam-mini .lv-video.is-off { display: none; }
+.lv-cam-mini-btn { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+
+.lv-segs { display: flex; flex-direction: column; gap: 4px; }
+.lv-seg {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: var(--radius-xs);
+  border: 1px solid transparent; background: transparent;
+  text-align: left; cursor: pointer; font-family: inherit;
+  transition: background .18s var(--ease), border-color .18s var(--ease);
+}
+.lv-seg:hover { background: var(--primary-faint); }
+.lv-seg.is-cur { background: var(--primary-faint); border-color: rgba(var(--primary-rgb), .3); }
+.lv-seg-t { flex: 0 0 auto; font-size: 13px; }
+.lv-seg-x {
+  flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--ink-soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lv-seg.is-cur .lv-seg-x { color: var(--ink); font-weight: 700; }
+
+.lv-endlist { margin: 0 0 14px; padding-left: 20px; }
+.lv-endlist li { font-size: 13px; color: var(--ink-soft); line-height: 1.9; }
+
+.lv-toggle-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+
+@media (max-width: 640px) {
+  .lv-board-text { font-size: 14.5px; line-height: 1.95; }
+  .lv-ctrl .btn { flex: 1 1 45%; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .001ms !important;

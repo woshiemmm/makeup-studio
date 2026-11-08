@@ -3978,13 +3978,17 @@
     /* AI 小老师：练完自检之后，把这一节课 + 你的练习交给它判 */
     parts.push(tutorCardHtml(lo));
 
-    /* 面对面教学：这节课就让人盯着你练（练的是手法，不是复刻妆容） */
+    /* 直播课：老师照着这节课的内容开讲（主推） */
     parts.push('<div class="card cr-live-cta">' +
-      '<div class="card-title"><h3>🎥 想让人盯着你练？</h3>' +
-        '<span class="hint">开摄像头，按这节的手法一步步带</span></div>' +
-      '<p>把老师「叫过来」：它会把这节课的手法拆成<b>由易到难的练习步骤</b>，' +
-      '你练的时候随时拍一帧让它看做得对不对，它会念给你听；离开页面摄像头立刻关。</p>' +
-      '<a class="btn primary" href="#/live/lesson/' + escapeHtml(lo.id) + '">面对面教我这节 →</a>' +
+      '<div class="card-title"><h3>🎥 上这节的直播课</h3>' +
+        '<span class="hint">老师照着这节课开讲</span></div>' +
+      '<p>把这一节的<b>要点、做法、常见错误、自检</b>变成口语讲稿，老师一段一段讲给你听 —— ' +
+      '像真人上课那样自动往下讲，你可以随时<b>暂停、跳段、举手提问</b>，' +
+      '练的时候还能让它看一眼你画得对不对。离开页面摄像头立刻关。</p>' +
+      '<div class="lv-alt">' +
+        '<a class="btn primary" href="#/live/class/' + escapeHtml(lo.id) + '">🔴 开始上课 →</a>' +
+        '<a class="btn ghost" href="#/live/lesson/' + escapeHtml(lo.id) + '">只想让它盯着我练手法</a>' +
+      '</div>' +
     '</div>');
 
     if (lo.videos && lo.videos.length) {
@@ -4260,6 +4264,9 @@
       try { lv.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) { }
       lv.stream = null;
     }
+    /* 直播课：停掉自动推进，并让旧的回调失效 */
+    lv.playing = false;
+    lv.seq = (lv.seq || 0) + 1;
     try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { }
   }
 
@@ -4324,6 +4331,27 @@
         palette: [],
         image: '',
         isCos: /cos|二次元|动漫|漫展|角色/i.test(title)
+      };
+    }
+    if (kind === 'class' && arg) {
+      const lo = lessonById(arg);
+      if (!lo) return null;
+      const lines = ['课程：' + lo.title];
+      if (lo.goal) lines.push('目标：' + lo.goal);
+      if (lo.points && lo.points.length) {
+        lines.push('要点：' + lo.points.map(function (p) { return p.t + '——' + p.d; }).join('；'));
+      }
+      if (lo.steps && lo.steps.length) lines.push('步骤：' + lo.steps.join('；'));
+      if (lo.mistakes && lo.mistakes.length) {
+        lines.push('常见错误：' + lo.mistakes.map(function (m) { return m.p + '——' + m.f; }).join('；'));
+      }
+      if (lo.checklist && lo.checklist.length) lines.push('自检：' + lo.checklist.join('；'));
+      return {
+        kind: 'lecture',
+        lessonId: lo.id,
+        name: lo.title,
+        desc: lines.join('\n').slice(0, 600),
+        palette: [], image: '', isCos: false
       };
     }
     if (kind === 'lesson' && arg) {
@@ -4489,7 +4517,9 @@
           profile: liveProfileText(), planText: '', plan: null, stepIndex: 0,
           stream: null, timer: null, autoMs: 20000, autoOn: false, speech: lv.speech !== false,
           log: [], checks: 0, refAnalysis: null, lastSim: null,
-          pending: false, cameraError: '', camTried: false, refImage: lv.refImage, refNote: lv.refNote
+          pending: false, cameraError: '', camTried: false, refImage: lv.refImage, refNote: lv.refNote,
+          /* 直播课专用 */
+          script: null, idx: 0, playing: false, seq: 0, askLog: [], asking: false
         };
       } else {
         lv.kind = '';
@@ -4505,11 +4535,26 @@
       lv.checks = 0;
       lv.lastSim = null;
       lv.refAnalysis = null;
+      lv.script = null;
+      lv.idx = 0;
+      lv.playing = false;
+      lv.seq++;
+      lv.askLog = [];
     }
 
+    renderLiveBody(box);
+  }
+
+  /* 按当前状态渲染：选目标 / 开播前 / 直播中 / 备课 / 上课 */
+  function renderLiveBody(box) {
     const cur = liveState();
-    if (!cur.target) renderLivePicker(box);
-    else if (!cur.plan) renderLivePrep(box);
+    if (!cur.target) { renderLivePicker(box); return; }
+    if (cur.target.kind === 'lecture') {
+      if (!cur.script || !cur.script.length) renderLecturePrep(box);
+      else renderLecture(box);
+      return;
+    }
+    if (!cur.plan) renderLivePrep(box);
     else renderLiveClass(box);
   }
 
@@ -4517,10 +4562,7 @@
   function rerenderLive() {
     const box = $('#live-body');
     if (!box) return;
-    const lv = liveState();
-    if (!lv.target) renderLivePicker(box);
-    else if (!lv.plan) renderLivePrep(box);
-    else renderLiveClass(box);
+    renderLiveBody(box);
   }
 
   /* ---------- 选目标 ---------- */
@@ -5032,6 +5074,427 @@
       lv.stepIndex = 0;
       lv.lastSim = null;
       rerenderLive();
+    });
+  }
+
+  /* ============ 直播课（老师照着课程内容开讲，你跟着做） ============
+   * 和「面对面练习」的区别：
+   *   练习 = 先备课出步骤，你一步一步做，它检查
+   *   直播 = 把整节课变成一份能念出来的讲稿，自动一段段讲下去，像真人上课
+   *         你随时可以「举手」打断提问，也可以让它看一眼你画的怎么样
+   */
+  const LECTURE_ICON = { '开场': '🎬', '要点': '💡', '示范': '✋', '提醒': '⚠️', '自检': '✅', '收尾': '🎯' };
+
+  function parseLecture(text) {
+    const lines = String(text || '').replace(/\r/g, '').split('\n')
+      .map(function (x) { return x.trim(); }).filter(Boolean);
+    const out = [];
+    lines.forEach(function (line) {
+      const seg = line.split('|').map(function (x) { return x.trim(); });
+      if (seg.length >= 3 && seg[2]) {
+        out.push({ no: parseInt(seg[0], 10) || out.length + 1, type: seg[1] || '', text: seg.slice(2).join(' ') });
+      } else if (seg.length === 2 && seg[1]) {
+        out.push({ no: out.length + 1, type: '', text: seg[1] });
+      } else if (line.length > 8) {
+        out.push({ no: out.length + 1, type: '', text: line.replace(/^\d+[.、|)]\s*/, '') });
+      }
+    });
+    return out;
+  }
+
+  function lectureState() {
+    const lv = liveState();
+    if (lv.script === undefined) lv.script = null;
+    if (lv.idx === undefined) lv.idx = 0;
+    if (lv.playing === undefined) lv.playing = false;
+    if (lv.seq === undefined) lv.seq = 0;
+    if (!Array.isArray(lv.askLog)) lv.askLog = [];
+    return lv;
+  }
+
+  /* 念一段，念完（或估时到）回调下一步。用 seq 防止暂停/跳段后旧回调还在推进 */
+  function lectureSpeak(text, seq) {
+    const lv = lectureState();
+    const done = function () {
+      realAdvance(text, seq);
+    };
+    if (!lv.speech || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+      /* 不播报就按字数估个时间 */
+      window.setTimeout(done, Math.max(2200, Math.min(14000, String(text || '').length * 210)));
+      return;
+    }
+    try {
+      window.speechSynthesis.cancel();
+      const u = new window.SpeechSynthesisUtterance(String(text || '').slice(0, 400));
+      u.lang = 'zh-CN';
+      u.rate = 1.02;
+      let fired = false;
+      const once = function () {
+        if (fired) return;
+        fired = true;
+        done();
+      };
+      u.onend = once;
+      u.onerror = once;
+      /* 保险：onend 偶尔不触发（尤其移动端），按字数兜一个上限 */
+      window.setTimeout(once, Math.max(4000, Math.min(40000, String(text || '').length * 320 + 4000)));
+      window.speechSynthesis.speak(u);
+    } catch (e) {
+      window.setTimeout(done, 2500);
+    }
+  }
+
+  function realAdvance(text, seq) {
+    const lv = lectureState();
+    if (!lv.playing || lv.seq !== seq) return;      // 暂停了 / 跳段了 / 换课了
+    lectureNext();
+  }
+
+  function lecturePlay() {
+    const lv = lectureState();
+    if (!lv.script || !lv.script.length) return;
+    lv.playing = true;
+    lv.seq++;
+    const seg = lv.script[lv.idx] || lv.script[0];
+    lectureSpeak(seg ? seg.text : '', lv.seq);
+    rerenderLive();
+  }
+
+  function lecturePause() {
+    const lv = lectureState();
+    lv.playing = false;
+    lv.seq++;
+    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { }
+    rerenderLive();
+  }
+
+  function lectureGoto(idx) {
+    const lv = lectureState();
+    if (!lv.script) return;
+    lv.idx = Math.max(0, Math.min(lv.script.length - 1, idx));
+    lv.seq++;
+    if (lv.playing) {
+      const seg = lv.script[lv.idx];
+      lectureSpeak(seg ? seg.text : '', lv.seq);
+    }
+    rerenderLive();
+  }
+
+  function lectureNext() {
+    const lv = lectureState();
+    if (!lv.script) return;
+    if (lv.idx >= lv.script.length - 1) { lectureEnd(); return; }
+    lv.idx++;
+    lv.seq++;
+    rerenderLive();
+    if (lv.playing) {
+      const seg = lv.script[lv.idx];
+      lectureSpeak(seg ? seg.text : '', lv.seq);
+    }
+  }
+
+  /* ---------- 开播前 ---------- */
+  function renderLecturePrep(box) {
+    const lv = lectureState();
+    const t = lv.target;
+    const lo = t.lessonId ? lessonById(t.lessonId) : null;
+    const parts = [];
+
+    parts.push('<div class="page-head"><h2>直播课</h2>' +
+      '<p class="sub">' + escapeHtml(t.name) + '　' +
+      '<a class="lv-back" href="#/course">← 回课程</a></p></div>');
+
+    parts.push('<div class="card lv-note">' +
+      '<b>🎬 这是一节直播课</b>' +
+      '<p>老师会把这一节的<b>要点、做法、常见错误、自检</b>改成口语讲稿，一段一段讲给你听' +
+      '（自动往下讲，你可以随时暂停、跳段、举手提问）。' +
+      '摄像头只用在你点「让它看一眼」的时候。</p>' +
+    '</div>');
+
+    parts.push('<div class="card">' +
+      '<div class="card-title"><h3>这节课讲什么</h3></div>' +
+      (lo && lo.goal ? '<p class="lv-profile">🎯 ' + escapeHtml(lo.goal) + '</p>' : '') +
+      (lv.profile ? '<p class="lv-profile">我会按你的情况讲：' + escapeHtml(lv.profile) + '</p>'
+        : '<p class="lv-profile lv-profile-empty">没填脸型/眼型/肤质，我会按通用情况讲。</p>') +
+      '<div class="lv-toggle-row">' +
+        '<label class="lv-toggle lv-toggle-sm"><input type="checkbox" id="lv-sp"' + (lv.speech ? ' checked' : '') + ' />' +
+          '<span>语音播报（建议开）</span></label>' +
+      '</div>' +
+      '<button class="btn primary" id="lv-go-live"' + (lv.pending ? ' disabled' : '') + '>' +
+        (lv.pending ? '正在准备讲稿…' : '🔴 开始上课') + '</button>' +
+      '<p class="hint">准备讲稿会花一次调用（约 2400 token 上限）。</p>' +
+    '</div>');
+
+    box.innerHTML = parts.join('');
+
+    const sp = $('#lv-sp');
+    if (sp) sp.addEventListener('change', function () { lectureState().speech = !!sp.checked; });
+
+    const go = $('#lv-go-live');
+    if (go) go.addEventListener('click', lecturePrepare);
+  }
+
+  function lecturePrepare() {
+    const lv = lectureState();
+    if (lv.pending) return;
+    const lo = lv.target.lessonId ? lessonById(lv.target.lessonId) : null;
+    lv.pending = true;
+    const btn = $('#lv-go-live');
+    if (btn) { btn.disabled = true; btn.textContent = '正在准备讲稿…'; }
+
+    V.askTutor({
+      mode: 'lecture',
+      lessonBrief: (lo ? tutorBrief(lo) : lv.target.desc || '').slice(0, 1600),
+      profile: lv.profile || '未提供',
+      targetKind: 'lesson'
+    }).then(function (r) {
+      lv.pending = false;
+      if (r.blocked) { toast('备课被拦下了'); rerenderLive(); return; }
+      const script = parseLecture(r.reply);
+      if (!script.length) {
+        toast('讲稿没解析出来，再试一次');
+        rerenderLive();
+        return;
+      }
+      lv.script = script;
+      lv.idx = 0;
+      lv.askLog = [];
+      lv.checks = 0;
+      toast('讲稿准备好了：' + script.length + ' 段', { type: 'ok' });
+      rerenderLive();
+    }).catch(function (e) {
+      lv.pending = false;
+      if (btn) { btn.disabled = false; btn.textContent = '🔴 开始上课'; }
+      try { console.error('[lecture] 备课失败', e); } catch (e2) { }
+      toast((e && e.message) ? e.message : '准备讲稿失败');
+    });
+  }
+
+  /* ---------- 上课中 ---------- */
+  function renderLecture(box) {
+    const lv = lectureState();
+    const list = lv.script || [];
+    const idx = Math.min(lv.idx, list.length - 1);
+    const seg = list[idx] || { type: '', text: '' };
+    const pct = list.length ? Math.round(((idx + 1) / list.length) * 100) : 0;
+    const parts = [];
+
+    parts.push('<div class="page-head"><h2>🔴 直播中</h2>' +
+      '<p class="sub">' + escapeHtml(lv.target.name) +
+      '<a class="lv-back" href="#/course/' + escapeHtml(lv.target.lessonId || '') + '">← 回这一课</a></p></div>');
+
+    /* 老师画面 / 板书 */
+    parts.push('<div class="card lv-stage">' +
+      '<div class="lv-stage-top">' +
+        '<span class="lv-live-dot"></span><b>老师正在讲</b>' +
+        '<span class="lv-stage-prog">第 ' + (idx + 1) + ' / ' + list.length + ' 段</span>' +
+      '</div>' +
+      '<div class="lv-board">' +
+        (seg.type ? '<span class="lv-board-type">' + (LECTURE_ICON[seg.type] || '💬') + ' ' + escapeHtml(seg.type) + '</span>' : '') +
+        '<p class="lv-board-text">' + escapeHtml(seg.text).replace(/\n/g, '<br>') + '</p>' +
+      '</div>' +
+      '<div class="lv-progress"><div class="lv-progress-bar"><i style="width:' + pct + '%"></i></div></div>' +
+      '<div class="lv-ctrl">' +
+        '<button class="btn ghost" id="lv-lprev"' + (idx <= 0 ? ' disabled' : '') + '>⏮ 上一段</button>' +
+        '<button class="btn ' + (lv.playing ? 'ghost' : 'primary') + '" id="lv-lplay">' +
+          (lv.playing ? '⏸ 暂停' : '▶ 继续讲') + '</button>' +
+        '<button class="btn ghost" id="lv-lnext">' + (idx >= list.length - 1 ? '⏭ 下课' : '⏭ 下一段') + '</button>' +
+        '<button class="btn ghost" id="lv-lsay">🔊 重念</button>' +
+      '</div>' +
+    '</div>');
+
+    /* 举手 / 摄像头 */
+    parts.push('<div class="card">' +
+      '<div class="card-title"><h3>🙋 举手提问</h3><span class="hint">会暂停讲课，回答完继续</span></div>' +
+      '<textarea class="crt-input" id="lv-ask-input" rows="2" placeholder="比如：这一步我总是做不好 / 我这种眼型该怎么改"></textarea>' +
+      '<div class="lv-ctrl lv-ctrl-tight">' +
+        '<button class="btn primary" id="lv-ask-send">举手</button>' +
+        '<label class="lv-toggle lv-toggle-sm"><input type="checkbox" id="lv-auto2"' + (lv.autoOn ? ' checked' : '') + ' />' +
+          '<span>它看我一眼（每 ' + Math.round(lv.autoMs / 1000) + ' 秒）</span></label>' +
+        '<button class="btn ghost" id="lv-lcheck"' + (lv.stream ? '' : ' disabled') + '>👀 让它看一眼</button>' +
+      '</div>' +
+      '<div class="lv-cam-mini">' +
+        '<video id="lv-video" class="lv-video' + (lv.stream ? '' : ' is-off') + '" autoplay muted playsinline></video>' +
+        (lv.stream ? '' : '<button class="btn ghost lv-cam-mini-btn" id="lv-cam-on">开摄像头</button>') +
+      '</div>' +
+      '<p class="hint">已让 AI 看 <b>' + lv.checks + '</b> / ' + LIVE_MAX_CHECKS + ' 次</p>' +
+      '<div class="lv-log" id="lv-log">' + liveAskLogHtml(lv) + '</div>' +
+    '</div>');
+
+    /* 段落目录 */
+    parts.push('<div class="card"><div class="card-title"><h3>课程目录</h3>' +
+      '<span class="hint">点哪段跳哪段</span></div>' +
+      '<div class="lv-segs">' + list.map(function (g, i) {
+        return '<button class="lv-seg' + (i === idx ? ' is-cur' : '') + '" data-seg="' + i + '">' +
+          '<span class="lv-seg-t">' + (LECTURE_ICON[g.type] || '💬') + '</span>' +
+          '<span class="lv-seg-x">' + escapeHtml(String(g.text).slice(0, 26)) + '</span>' +
+        '</button>';
+      }).join('') + '</div></div>');
+
+    box.innerHTML = parts.join('');
+
+    /* 绑定 */
+    const on = box.querySelector('#lv-cam-on');
+    if (on) on.addEventListener('click', function () { lv.camTried = false; liveStartCamera(); });
+    const v = box.querySelector('#lv-video');
+    if (v && lv.stream) { try { v.srcObject = lv.stream; v.play(); } catch (e) { } }
+
+    const gp = box.querySelector('#lv-lplay');
+    if (gp) gp.addEventListener('click', function () { lv.playing ? lecturePause() : lecturePlay(); });
+    const gprev = box.querySelector('#lv-lprev');
+    if (gprev) gprev.addEventListener('click', function () { lectureGoto(lv.idx - 1); });
+    const gnext = box.querySelector('#lv-lnext');
+    if (gnext) gnext.addEventListener('click', function () { lectureNext(); });
+    const gsay = box.querySelector('#lv-lsay');
+    if (gsay) gsay.addEventListener('click', function () {
+      const st = list[lv.idx]; if (st) { lv.seq++; lectureSpeak(st.text, lv.seq); }
+    });
+    const gcheck = box.querySelector('#lv-lcheck');
+    if (gcheck) gcheck.addEventListener('click', lectureCheck);
+    const gauto = box.querySelector('#lv-auto2');
+    if (gauto) gauto.addEventListener('change', function () {
+      lv.autoOn = !!gauto.checked;
+      if (lv.autoOn) {
+        if (lv.timer) clearInterval(lv.timer);
+        lv.timer = setInterval(function () { lectureCheck(true); }, lv.autoMs);
+        toast('已开自动检查');
+      } else if (lv.timer) { clearInterval(lv.timer); lv.timer = null; }
+      rerenderLive();
+    });
+    const gask = box.querySelector('#lv-ask-send');
+    if (gask) gask.addEventListener('click', lectureAsk);
+
+    box.querySelectorAll('[data-seg]').forEach(function (b) {
+      b.addEventListener('click', function () { lectureGoto(Number(b.dataset.seg)); });
+    });
+  }
+
+  function liveAskLogHtml(lv) {
+    if (!lv.askLog || !lv.askLog.length) {
+      return '<p class="lv-log-empty">还没举手。讲到哪里听不懂，直接问。</p>';
+    }
+    return lv.askLog.map(function (m) {
+      if (m.who === 'me') return '<div class="crt-msg is-me"><div class="crt-bubble">' + escapeHtml(m.text) + '</div></div>';
+      return '<div class="crt-msg is-ai"><span class="crt-ava">🤖</span>' +
+        '<div class="crt-bubble">' + escapeHtml(m.text).replace(/\n/g, '<br>') + '</div></div>';
+    }).join('');
+  }
+
+  function lectureAsk() {
+    const lv = lectureState();
+    const input = $('#lv-ask-input');
+    const q = input ? input.value.trim() : '';
+    if (!q) { toast('先写你要问什么'); return; }
+    if (lv.asking) return;
+    lv.asking = true;
+
+    const wasPlaying = lv.playing;
+    lv.playing = false;
+    lv.seq++;
+    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { }
+
+    const lo = lv.target.lessonId ? lessonById(lv.target.lessonId) : null;
+    const seg = (lv.script && lv.script[lv.idx]) ? lv.script[lv.idx].text : '';
+    lv.askLog.push({ who: 'me', text: q });
+    const logEl = $('#lv-log');
+    if (logEl) logEl.innerHTML = liveAskLogHtml(lv);
+
+    V.askTutor({
+      mode: 'ask',
+      question: q,
+      lessonBrief: (lo ? tutorBrief(lo) : '').slice(0, 1200),
+      practice: seg ? '老师刚讲到：' + seg : '',
+      targetKind: 'lesson'
+    }).then(function (r) {
+      lv.asking = false;
+      lv.askLog.push({ who: 'ai', text: r.reply });
+      const el = $('#lv-log');
+      if (el) el.innerHTML = liveAskLogHtml(lv);
+      /* 把回答念出来 */
+      lv.seq++;
+      lectureSpeak('我回答一下：' + r.reply, lv.seq);
+      /* 回答完如果本来在播，接着讲 */
+      if (wasPlaying) {
+        window.setTimeout(function () {
+          const st = lectureState();
+          if (!st.playing) { st.playing = true; st.seq++; rerenderLive(); }
+        }, 800);
+      }
+    }).catch(function (e) {
+      lv.asking = false;
+      lv.askLog.push({ who: 'ai', text: '⚠️ ' + ((e && e.message) || '没答上来') });
+      const el = $('#lv-log');
+      if (el) el.innerHTML = liveAskLogHtml(lv);
+    });
+  }
+
+  function lectureCheck(auto) {
+    const lv = lectureState();
+    if (!lv.stream) { if (!auto) toast('先开摄像头'); return; }
+    if (lv.checks >= LIVE_MAX_CHECKS) { if (!auto) toast('检查次数用完了'); return; }
+    const frame = liveGrabFrame();
+    if (!frame) { if (!auto) toast('还拿不到画面'); return; }
+    const seg = lv.script && lv.script[lv.idx];
+    V.askTutor({
+      mode: 'check',
+      image: frame,
+      plan: (lv.script || []).map(function (g, i) { return (i + 1) + '|' + g.type + '|' + g.text; }).join('\n').slice(0, 900),
+      stepIndex: lv.idx,
+      targetKind: 'lesson',
+      target: lv.target.name
+    }).then(function (r) {
+      lv.checks++;
+      lv.askLog.push({ who: 'ai', text: r.reply });
+      const el = $('#lv-log');
+      if (el) el.innerHTML = liveAskLogHtml(lv);
+      lv.seq++;
+      lectureSpeak(String(r.reply).replace(/^结论\s*[:：][^\n]*\n?/, ''), lv.seq);
+      rerenderLive();
+    }).catch(function (e) {
+      if (!auto) toast((e && e.message) || '没看成');
+    });
+  }
+
+  /* ---------- 下课 ---------- */
+  function lectureEnd() {
+    const lv = lectureState();
+    lv.playing = false;
+    lv.seq++;
+    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { }
+    liveStop();
+    const box = $('#live-body');
+    if (!box) return;
+    const lo = lv.target.lessonId ? lessonById(lv.target.lessonId) : null;
+    const parts = [];
+    parts.push('<div class="page-head"><h2>🔚 下课了</h2></div>');
+    parts.push('<div class="card lv-finish">' +
+      '<b>' + escapeHtml(lv.target.name) + '</b>' +
+      '<p class="lv-finish-line">这节课一共有 ' + (lv.script || []).length + ' 段，你听到第 ' +
+        (Math.min(lv.idx + 1, (lv.script || []).length)) + ' 段。' +
+        (lv.askLog && lv.askLog.length ? '中间举了手 ' + Math.floor(lv.askLog.length / 2) + ' 次。' : '') +
+      '</p>' +
+      (lo && lo.checklist && lo.checklist.length
+        ? '<p class="lv-finish-line">下课前自己过一遍这几条：</p><ul class="lv-endlist">' +
+          lo.checklist.map(function (c) { return '<li>' + escapeHtml(c) + '</li>'; }).join('') + '</ul>'
+        : '') +
+      '<div class="lv-finish-actions">' +
+        '<a class="btn primary" href="#/course/' + escapeHtml(lv.target.lessonId || '') + '">回到这一课</a>' +
+        '<button class="btn ghost" id="lv-mark-done">标记这节学完</button>' +
+        '<a class="btn ghost" href="#/live">换一节</a>' +
+      '</div>' +
+    '</div>');
+    if (lv.askLog && lv.askLog.length) {
+      parts.push('<div class="card"><div class="card-title"><h3>这节课问过的</h3></div>' +
+        '<div class="lv-log">' + liveAskLogHtml(lv) + '</div></div>');
+    }
+    box.innerHTML = parts.join('');
+    const md = $('#lv-mark-done');
+    if (md) md.addEventListener('click', function () {
+      if (!lv.target.lessonId) return;
+      S.markLesson(lv.target.lessonId, true);
+      toast('✅ 已标记学完');
+      md.disabled = true;
+      md.textContent = '✓ 已学完';
     });
   }
 

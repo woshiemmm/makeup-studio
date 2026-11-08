@@ -53,7 +53,8 @@ const MODE_TOKENS = {
   ask: 900,
   review: 900,
   plan: 1600,
-  check: 500
+  check: 500,
+  lecture: 2400      // 直播课：一次生成整节讲稿
 };
 
 /* 固定拒答话术：预处理层和系统提示词共用，保证说法一致 */
@@ -186,7 +187,7 @@ export async function onRequestPost(context) {
   if (!payload || typeof payload !== 'object') return fail('请求体格式不对。', 400, env, 'BAD_PAYLOAD');
 
   /* ---- 取字段（只认这几个，其余一律忽略：前端塞 messages / system 都没用） ---- */
-  const MODES = ['ask', 'review', 'plan', 'check'];
+  const MODES = ['ask', 'review', 'plan', 'check', 'lecture'];
   const mode = MODES.indexOf(payload.mode) >= 0 ? payload.mode : 'ask';
   const lessonId = /^l\d{2}$/.test(String(payload.lessonId || '')) ? String(payload.lessonId) : '';
   const question = cleanText(payload.question, LIMIT.question);
@@ -208,13 +209,16 @@ export async function onRequestPost(context) {
   if (mode === 'plan' && !target) {
     return fail('先告诉我要教哪个妆容。', 400, env, 'NO_TARGET');
   }
+  if (mode === 'lecture' && !target && !lessonBrief) {
+    return fail('缺少要讲的课程内容。', 400, env, 'NO_TARGET');
+  }
   if (mode === 'check' && !image) {
     return fail('看画面需要一张照片。', 400, env, 'NO_IMAGE');
   }
   if (mode === 'check' && !plan) {
     return fail('缺少教学计划，先备一次课。', 400, env, 'NO_PLAN');
   }
-  if (mode !== 'plan' && mode !== 'check' && !question && !practice && !image) {
+  if (mode !== 'plan' && mode !== 'check' && mode !== 'lecture' && !question && !practice && !image) {
     return fail('先说说你练了什么，或者直接问个问题。', 400, env, 'EMPTY');
   }
   if (image) {
@@ -254,7 +258,23 @@ export async function onRequestPost(context) {
   if (question) parts.push(block('学员提问', question));
 
   let task;
-  if (mode === 'plan') {
+  if (mode === 'lecture') {
+    /* 直播课：把课程内容变成一份能直接开口念的讲稿 */
+    task = '现在你要**上一节直播课**。学员坐在屏幕前听你讲，然后照着做。\n' +
+      '请把"课程资料"里的内容，改成一份**可以直接开口念出来的讲稿**：' +
+      '口语化、有节奏、像真人上课，不要写小标题式的提纲，不要「第一点第二点」这种书面腔。\n' +
+      '\n要求：\n' +
+      '- 8~14 段，每段 40~90 字，念出来大概 10~20 秒；\n' +
+      '- 顺序：开场（这节课学什么、最容易错在哪）→ 要点逐条讲 → 具体怎么做（给位置、用量、顺序）→ 常见错误提醒 → 自检（让学员自己确认）→ 收尾（记住一句话）\n' +
+      '- 每段都要能独立念通顺，不要出现"如上所述""见下"这种依赖版面的说法；\n' +
+      '- 不要出现竖线、括号注释、markdown、emoji。\n' +
+      '\n严格按下面的行格式输出，一行一段，不要加任何别的解释：\n' +
+      '1|开场|这段要讲的话\n' +
+      '2|要点|这段要讲的话\n' +
+      '3|示范|这段要讲的话\n' +
+      '...\n' +
+      '\n"类型"只能从这六个里选：开场、要点、示范、提醒、自检、收尾。';
+  } else if (mode === 'plan') {
     if (isLesson) {
       /* 课程里的技能练习：不是复刻妆容，是练手法 */
       task = '现在是备课阶段。学员要练的是**一项手法/技能**，不是复刻某个妆容。' +
@@ -316,7 +336,7 @@ export async function onRequestPost(context) {
    */
   const MODEL = String(env.TUTOR_MODEL || env.ALLOWED_MODELS || 'deepseek-flash')
     .split(',')[0].trim() || 'deepseek-flash';
-  const TEMP = mode === 'plan' ? 0.6 : (mode === 'check' ? 0.3 : 0.5);
+  const TEMP = mode === 'plan' ? 0.6 : (mode === 'check' ? 0.3 : (mode === 'lecture' ? 0.7 : 0.5));
 
   /* 从 message 里取正文：兼容 string / 数组分段 / content 为空但只有思考 */
   function extractAnswer(message) {
