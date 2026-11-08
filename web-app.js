@@ -3978,6 +3978,15 @@
     /* AI 小老师：练完自检之后，把这一节课 + 你的练习交给它判 */
     parts.push(tutorCardHtml(lo));
 
+    /* 面对面教学：这节课就让人盯着你练（练的是手法，不是复刻妆容） */
+    parts.push('<div class="card cr-live-cta">' +
+      '<div class="card-title"><h3>🎥 想让人盯着你练？</h3>' +
+        '<span class="hint">开摄像头，按这节的手法一步步带</span></div>' +
+      '<p>把老师「叫过来」：它会把这节课的手法拆成<b>由易到难的练习步骤</b>，' +
+      '你练的时候随时拍一帧让它看做得对不对，它会念给你听；离开页面摄像头立刻关。</p>' +
+      '<a class="btn primary" href="#/live/lesson/' + escapeHtml(lo.id) + '">面对面教我这节 →</a>' +
+    '</div>');
+
     if (lo.videos && lo.videos.length) {
       parts.push('<div class="card"><div class="card-title"><h3>📺 配套视频</h3>' +
         '<span class="hint">B 站，点开新窗口看</span></div>' +
@@ -4317,6 +4326,29 @@
         isCos: /cos|二次元|动漫|漫展|角色/i.test(title)
       };
     }
+    if (kind === 'lesson' && arg) {
+      const lo = lessonById(arg);
+      if (!lo) return null;
+      const lines = ['技能：' + lo.title];
+      if (lo.goal) lines.push('目标：' + lo.goal);
+      if (lo.points && lo.points.length) {
+        lines.push('要点：' + lo.points.map(function (p) { return p.t + '——' + p.d; }).join('；'));
+      }
+      if (lo.steps && lo.steps.length) lines.push('标准做法：' + lo.steps.join('；'));
+      if (lo.mistakes && lo.mistakes.length) {
+        lines.push('常见错误：' + lo.mistakes.map(function (m) { return m.p + '——' + m.f; }).join('；'));
+      }
+      if (lo.checklist && lo.checklist.length) lines.push('自检：' + lo.checklist.join('；'));
+      return {
+        kind: 'lesson',
+        lessonId: lo.id,
+        name: lo.title,
+        desc: lines.join('\n').slice(0, 600),
+        palette: [],
+        image: '',
+        isCos: false
+      };
+    }
     if (kind === 'ref') {
       const lv = liveState();
       if (!lv.refImage) return null;
@@ -4523,6 +4555,7 @@
 
     parts.push('<div class="lv-alt">' +
       '<a class="btn ghost" href="#/live/restore">' + (state.lastRecognize && state.lastRecognize.restore ? '用刚才识别出的妆容' : '还没有识别结果') + '</a>' +
+      '<a class="btn ghost" href="#/course">从课程里挑一项手法练 →</a>' +
       '<button class="btn ghost" id="lv-pick-ref">上传一张参考图</button>' +
       '<input type="file" accept="image/*" id="lv-ref-file" hidden />' +
     '</div>');
@@ -4581,18 +4614,23 @@
         ? '<p class="lv-profile">' + escapeHtml(lv.profile) + '</p>'
         : '<p class="lv-profile lv-profile-empty">还没填脸型/眼型/肤质 —— 它会按通用情况教。' +
           '想让教学更贴合，去「肤质分析」做一次，或在教学页选你的眼型和脸型。</p>') +
-      '<label class="lv-toggle">' +
-        '<input type="checkbox" id="lv-cos"' + (cos ? ' checked' : '') + ' />' +
-        '<span><b>这是 cos 妆</b><small>' +
-          '勾上 = 尽可能还原目标（允许夸张、允许重，相似度要求高）<br>' +
-          '不勾 = 合适就好（按你的脸型调整，不必和目标一模一样）' +
-        '</small></span>' +
-      '</label>' +
+      (lv.target.kind === 'lesson'
+        ? '<p class="lv-profile">这节课练的是<b>手法</b>，不是复刻某个妆容 —— 所以没有 cos / 日常之分，' +
+          '判断标准就是「这个动作做对了没有」。</p>'
+        : '<label class="lv-toggle">' +
+            '<input type="checkbox" id="lv-cos"' + (cos ? ' checked' : '') + ' />' +
+            '<span><b>这是 cos 妆</b><small>' +
+              '勾上 = 尽可能还原目标（允许夸张、允许重，相似度要求高）<br>' +
+              '不勾 = 合适就好（按你的脸型调整，不必和目标一模一样）' +
+            '</small></span>' +
+          '</label>') +
     '</div>');
 
     parts.push('<div class="card"><div class="card-title"><h3>③ 开始备课</h3></div>' +
-      '<p class="hint" style="margin:0 0 12px">会让 AI 产出 6~9 个步骤，每步都带「做到什么程度算完成」的可判断标准。' +
-      '这一步会花一次调用（约 1400 token 上限）。</p>' +
+      '<p class="hint" style="margin:0 0 12px">会让 AI 产出' +
+      (lv.target.kind === 'lesson' ? ' 4~7 个由易到难的练习步骤' : ' 6~9 个步骤') +
+      '，每步都带「做什么算过关」的可判断标准。' +
+      '这一步会花一次调用（约 1600 token 上限）。</p>' +
       '<button class="btn primary" id="lv-prepare"' + (lv.pending ? ' disabled' : '') + '>' +
         (lv.pending ? '正在备课…' : '让小老师备课') + '</button>' +
     '</div>');
@@ -4636,9 +4674,12 @@
 
     const payload = {
       mode: 'plan',
+      targetKind: lv.target.kind || 'look',
       target: String(lv.target.desc || '').slice(0, 600) + (lv.target.image ? '\n（参考图见附图）' : ''),
-      profile: (lv.profile || '未提供') + (lv.cosMode ? '\n本次按 cos 标准：尽可能还原目标' : '\n本次按日常标准：合适就好'),
-      cosMode: !!lv.cosMode,
+      profile: (lv.profile || '未提供') + (lv.target.kind === 'lesson'
+        ? '\n本次是在练一节课程里的手法'
+        : (lv.cosMode ? '\n本次按 cos 标准：尽可能还原目标' : '\n本次按日常标准：合适就好')),
+      cosMode: lv.target.kind === 'lesson' ? false : !!lv.cosMode,
       image: lv.target.image || ''
     };
 
@@ -4693,6 +4734,7 @@
     const total = plan.steps.length;
     const pct = total ? Math.round(((idx + 1) / total) * 100) : 0;
     const sim = lv.lastSim;
+    const isLesson = lv.target.kind === 'lesson';   // 练手法：没有「吻合度」这回事
     const parts = [];
 
     parts.push('<div class="page-head"><h2>上课中</h2>' +
@@ -4708,7 +4750,7 @@
           '<button class="btn primary" id="lv-cam-on">打开摄像头</button>' +
           '<small>' + (lv.cameraError ? escapeHtml(lv.cameraError) : '画面只在你点检查时才发出去') + '</small></div>') +
         '<div class="lv-cam-badge" id="lv-sim-badge">' +
-          (sim === null ? '色调吻合度：待测' : '色调吻合度：' + sim + '%') +
+          (isLesson ? '手法练习' : (sim === null ? '色调吻合度：待测' : '色调吻合度：' + sim + '%')) +
         '</div>' +
       '</div>' +
       '<div class="lv-cam-tools">' +
@@ -4724,7 +4766,8 @@
         '<button class="btn ghost" id="lv-cam-off-btn"' + (lv.stream ? '' : ' hidden') + '>关摄像头</button>' +
       '</div>' +
       '<p class="hint">已让 AI 看 <b>' + lv.checks + '</b> / ' + LIVE_MAX_CHECKS + ' 次' +
-        (lv.refAnalysis ? '　·　相似度是按整体色调算的，不判断形状和手法' : '　·　没有参考图，算不出相似度') +
+        (isLesson ? '　·　练的是手法，不算色调吻合度' :
+          (lv.refAnalysis ? '　·　相似度是按整体色调算的，不判断形状和手法' : '　·　没有参考图，算不出相似度')) +
       '</p>' +
     '</div>');
 
@@ -4741,7 +4784,7 @@
         '</div>' +
         '<p class="lv-step-how">' + escapeHtml(step.how) + '</p>' +
         (step.done ? '<p class="lv-step-done">✅ 完成标准：' + escapeHtml(step.done) + '</p>' : '') +
-        (sim !== null ? '<p class="lv-step-hint">当前色调吻合度 <b>' + sim + '%</b>' +
+        (!isLesson && sim !== null ? '<p class="lv-step-hint">当前色调吻合度 <b>' + sim + '%</b>' +
           (lv.cosMode
             ? (sim >= LIVE_COS_TARGET ? '　达到 cos 还原线（' + LIVE_COS_TARGET + '%）' : '　离 cos 还原线还差 ' + (LIVE_COS_TARGET - sim) + '%')
             : (sim >= LIVE_NORMAL_TARGET ? '　够用了，不用死磕' : '　可以再调，但日常妆不必强求')) +
@@ -4903,6 +4946,7 @@
       image: frame,
       plan: planBrief(lv.plan),
       stepIndex: lv.stepIndex,
+      targetKind: (lv.target && lv.target.kind) || 'look',
       target: (lv.target && lv.target.name) || '',
       cosMode: !!lv.cosMode
     }).then(function (r) {
@@ -4933,15 +4977,17 @@
 
   function livePatchSim(sim) {
     const badge = $('#lv-sim-badge');
-    if (badge) {
-      badge.textContent = sim === null ? '色调吻合度：待测' : '色调吻合度：' + sim + '%';
-    }
+    if (!badge) return;
+    const lv = liveState();
+    if (lv.target && lv.target.kind === 'lesson') { badge.textContent = '手法练习'; return; }
+    badge.textContent = sim === null ? '色调吻合度：待测' : '色调吻合度：' + sim + '%';
   }
 
   /* 结课 */
   function liveFinish() {
     const lv = liveState();
     const sim = lv.lastSim;
+    const isLesson = lv.target.kind === 'lesson';
     const line = lv.cosMode ? LIVE_COS_TARGET : LIVE_NORMAL_TARGET;
     const ok = sim !== null && sim >= line;
     const box = $('#live-body');
@@ -4952,18 +4998,22 @@
     parts.push('<div class="card lv-finish">' +
       '<b>' + escapeHtml(lv.target.name) + '</b>' +
       '<p class="lv-finish-line">' +
-        (sim === null
-          ? '没有参考图，算不出色调吻合度 —— 但你自己对着镜子看，像不像比分数重要。'
-          : '色调吻合度 <b class="' + (ok ? 'is-ok' : 'is-mid') + '">' + sim + '%</b>　' +
-            (lv.cosMode
-              ? (ok ? '达到 cos 还原线（' + line + '% 以上）✓' : '离 cos 还原线差 ' + (line - sim) + '%，可以考虑再补一轮：重点在眼影范围和修容深浅')
-              : (ok ? '够用了 —— 日常妆合适就好，不用追着目标死磕' : '还可以再调；日常妆不必强求和目标一模一样'))) +
+        (isLesson
+          ? '这节练的是手法，没有「像不像」这回事 —— 回头把那几条完成标准对着镜子过一遍，做到了就是过关。'
+          : (sim === null
+            ? '没有参考图，算不出色调吻合度 —— 但你自己对着镜子看，像不像比分数重要。'
+            : '色调吻合度 <b class="' + (ok ? 'is-ok' : 'is-mid') + '">' + sim + '%</b>　' +
+              (lv.cosMode
+                ? (ok ? '达到 cos 还原线（' + line + '% 以上）✓' : '离 cos 还原线差 ' + (line - sim) + '%，可以考虑再补一轮：重点在眼影范围和修容深浅')
+                : (ok ? '够用了 —— 日常妆合适就好，不用追着目标死磕' : '还可以再调；日常妆不必强求和目标一模一样')))) +
       '</p>' +
       '<p class="lv-finish-meta">共走了 ' + lv.plan.steps.length + ' 步 · 让它看了 ' + lv.checks + ' 次' +
-        ' · ' + (lv.cosMode ? 'cos 标准' : '日常标准') + '</p>' +
+        ' · ' + (isLesson ? '手法练习' : (lv.cosMode ? 'cos 标准' : '日常标准')) + '</p>' +
       '<div class="lv-finish-actions">' +
-        '<button class="btn primary" id="lv-again">用同一个妆容再来一次</button>' +
-        '<a class="btn ghost" href="#/live">换个妆容</a>' +
+        '<button class="btn primary" id="lv-again">' +
+          (isLesson ? '再练一遍' : '用同一个妆容再来一次') + '</button>' +
+        '<a class="btn ghost" href="#/live">' + (isLesson ? '换个东西练' : '换个妆容') + '</a>' +
+        (isLesson ? '<a class="btn ghost" href="#/course/' + escapeHtml(lv.target.lessonId || '') + '">回到这一课</a>' : '') +
       '</div>' +
     '</div>');
 

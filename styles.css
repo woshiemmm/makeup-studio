@@ -2393,6 +2393,20 @@ ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
   .cr-foot .btn, .cr-foot span { text-align: center; }
 }
 
+/* 课程里的「面对面教我这节」入口 */
+.cr-live-cta {
+  border-left: 3px solid var(--primary);
+  background: linear-gradient(135deg, var(--primary-faint), var(--card) 70%);
+}
+.cr-live-cta p {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.85;
+}
+.cr-live-cta p b { color: var(--ink); }
+.cr-live-cta .btn { display: inline-block; text-decoration: none; }
+
 /* ---- AI 小老师 ---- */
 .cr-tutor { padding: 18px 20px; }
 .crt-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
