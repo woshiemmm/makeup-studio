@@ -2745,6 +2745,37 @@ ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
   .lv-ctrl .btn { flex: 1 1 45%; }
 }
 
+/* ---- 语音设置条 ---- */
+.tts-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-top: 12px; padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-grad-2);
+  border: 1px solid var(--line);
+}
+.tts-row.is-compact { padding: 8px 10px; gap: 6px; }
+.tts-label { font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+.tts-select, .tts-rate {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--line-strong);
+  background: var(--card);
+  color: var(--ink);
+  max-width: 62%;
+  cursor: pointer;
+}
+.tts-rate { max-width: none; }
+.tts-test { font-size: 11.5px; padding: 5px 10px; }
+.tts-hint { flex: 1 1 100%; font-size: 11px; color: var(--ink-faint); line-height: 1.7; }
+.tts-hint b { color: var(--primary-2); }
+.tts-note { font-size: 11.5px; color: var(--ink-faint); }
+
+@media (max-width: 640px) {
+  .tts-select { max-width: 100%; flex: 1 1 100%; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .001ms !important;
