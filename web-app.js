@@ -3982,7 +3982,7 @@
     parts.push('<div class="card cr-live-cta">' +
       '<div class="card-title"><h3>🎥 上这节的直播课</h3>' +
         '<span class="hint">老师照着这节课开讲</span></div>' +
-      '<p>把这一节的<b>要点、做法、常见错误、自检</b>变成口语讲稿，老师一段一段讲给你听 —— ' +
+      '<p>把这一节的<b>要点、做法、常见错误、自检</b>变成口语讲稿，一段一段往下走 —— ' +
       '像真人上课那样自动往下讲，你可以随时<b>暂停、跳段、举手提问</b>，' +
       '练的时候还能让它看一眼你画得对不对。离开页面摄像头立刻关。</p>' +
       '<div class="lv-alt">' +
@@ -4229,7 +4229,7 @@
   /* ============ 面对面教学（通话式逐步指导） ============
    * 说明一下「实时」到底是什么：
    *   DeepSeek 的 API 是请求-响应，没有视频流。所以这里的「面对面」是
-   *   「定时抓一帧 → 小老师看 → 语音说出来」的循环，不是真正的视频通话。
+   *   「定时抓一帧 → 小老师看 → 把一句结论写在屏幕上」的循环，不是真正的视频通话。
    *
    * 流程刻意分成两段（对应「先学会这个妆容再去教用户」）：
    *   ① 备课：把目标妆容 + 我的脸型眼型肤质交给 AI，产出一份带完成标准的计划
@@ -4274,7 +4274,6 @@
     if (lv.coachTimer) { try { clearInterval(lv.coachTimer); } catch (e) { } lv.coachTimer = null; }
     lv.coach = false;
     lv.coachBusy = false;
-    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { }
   }
 
   /* 把目标妆容整理成 { name, desc, palette, image } */
@@ -4460,9 +4459,7 @@
     return m ? m[1] : '';
   }
 
-  /* ---------- 语音播报：实现见文件后面的「语音（TTS）」段 ---------- */
-
-  /* ---------- 抓一帧（摄像头或画布） ---------- */
+    /* ---------- 抓一帧（摄像头或画布） ---------- */
   function liveGrabFrame() {
     const lv = liveState();
     /* 上传的照片优先：没摄像头 / 不方便实时拍的时候靠它 */
@@ -4580,7 +4577,7 @@
         state.live = {
           target: t, kind: wantKey, cosMode: cos,
           profile: liveProfileText(), planText: '', plan: null, stepIndex: 0,
-          stream: null, timer: null, autoMs: 20000, autoOn: false, speech: lv.speech !== false,
+          stream: null, timer: null, autoMs: 20000, autoOn: false, speech: true,
           log: [], checks: 0, refAnalysis: null, lastSim: null,
           pending: false, cameraError: '', camTried: false, refImage: lv.refImage, refNote: lv.refNote,
           /* 直播课专用 */
@@ -4644,7 +4641,7 @@
 
     parts.push('<div class="card lv-note">' +
       '<b>⚠️ 关于「实时」先说明白</b>' +
-      '<p>模型接口是请求-响应，没有视频流，所以这里是「<b>定时抓一帧 → 它看 → 语音说给你听</b>」的循环，' +
+      '<p>模型接口是请求-响应，没有视频流，所以这里是「<b>定时抓一帧 → 它看 → 把一句结论写给你</b>」的循环，' +
       '不是真正的视频通话。摄像头画面只在你点「让它看」或开了自动检查时才发出去，关掉页面就停。</p>' +
     '</div>');
 
@@ -4869,14 +4866,9 @@
       '<div class="lv-cam-tools">' +
         (lv.coach ? '' : '<button class="btn primary" id="lv-coach-start">🔴 手把手带练</button>') +
         '<button class="btn ghost" id="lv-look-now">👀 让它看一下</button>' +
-        '<label class="lv-toggle lv-toggle-sm">' +
-          '<input type="checkbox" id="lv-speech"' + (lv.speech ? ' checked' : '') + ' />' +
-          '<span>语音播报</span>' +
-        '</label>' +
         '<button class="btn ghost" id="lv-cam-off-btn"' + (lv.stream ? '' : ' hidden') + '>关摄像头</button>' +
       '</div>' +
       livePhotoBarHtml(lv) +
-      ttsControlsHtml({ compact: true }) +
       '<p class="hint">已让 AI 看 <b>' + lv.checks + '</b> / ' + LIVE_MAX_CHECKS + ' 次' +
         (isLesson ? '　·　练的是手法，不算色调吻合度' :
           (lv.refAnalysis ? '　·　相似度是按整体色调算的，不判断形状和手法' : '　·　没有参考图，算不出相似度')) +
@@ -4892,7 +4884,6 @@
         '<div class="lv-step-head">' +
           '<span class="lv-step-no">' + (idx + 1) + '</span>' +
           (step.stage ? '<span class="lv-step-stage">' + escapeHtml(step.stage) + '</span>' : '') +
-          '<button class="btn ghost lv-say" id="lv-say">🔊 读给我听</button>' +
         '</div>' +
         '<p class="lv-step-how">' + escapeHtml(step.how) + '</p>' +
         (step.done ? '<p class="lv-step-done">✅ 完成标准：' + escapeHtml(step.done) + '</p>' : '') +
@@ -4919,7 +4910,6 @@
     liveBindCamera(box);
     liveBindControls(box);
     bindCoach(box);
-    bindTts(box);
     bindLivePhoto(box);
 
     /* 进入上课自动尝试开摄像头（失败就显示按钮让人手动开） */
@@ -5016,12 +5006,6 @@
     const lv = liveState();
     const plan = lv.plan || { steps: [] };
 
-    const say = box.querySelector('#lv-say');
-    if (say) say.addEventListener('click', function () {
-      const st = plan.steps[lv.stepIndex];
-      if (st) liveSpeak('第' + (lv.stepIndex + 1) + '步，' + (st.stage || '') + '。' + st.how + (st.done ? '。完成标准：' + st.done : ''));
-    });
-
     const prev = box.querySelector('#lv-prev');
     if (prev) prev.addEventListener('click', function () {
       if (lv.stepIndex > 0) { lv.stepIndex--; rerenderLive(); }
@@ -5032,7 +5016,6 @@
       if (lv.stepIndex >= plan.steps.length - 1) { liveFinish(); return; }
       lv.stepIndex++;
       const st = plan.steps[lv.stepIndex];
-      if (st) liveSpeak('第' + (lv.stepIndex + 1) + '步，' + (st.stage || '') + '。' + st.how);
       rerenderLive();
     });
 
@@ -5054,11 +5037,6 @@
       rerenderLive();
     });
 
-    const sp = box.querySelector('#lv-speech');
-    if (sp) sp.addEventListener('change', function () {
-      lv.speech = !!sp.checked;
-      if (!lv.speech) { try { window.speechSynthesis.cancel(); } catch (e) { } }
-    });
   }
 
   /* 让它看一帧 */
@@ -5101,8 +5079,7 @@
       /* 把结论念出来 + 说下一步 */
       if (!r.blocked) {
         const said = verdict ? verdict + '。' : '';
-        liveSpeak(said + String(r.reply).replace(/^结论\s*[:：][^\n]*\n?/, '').slice(0, 200));
-      }
+        }
       rerenderLive();
     }).catch(function (e) {
       toast((e && e.message) ? e.message : '这一帧没看成');
@@ -5214,35 +5191,11 @@
   }
 
   /* 念一段，念完（或估时到）回调下一步。用 seq 防止暂停/跳段后旧回调还在推进 */
-  function lectureSpeak(text, seq) {
-    const lv = lectureState();
-    const done = function () {
-      realAdvance(text, seq);
-    };
-    if (!lv.speech || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
-      /* 不播报就按字数估个时间 */
-      window.setTimeout(done, Math.max(2200, Math.min(14000, String(text || '').length * 210)));
-      return;
-    }
-    try {
-      window.speechSynthesis.cancel();
-      const u = new window.SpeechSynthesisUtterance(String(text || '').slice(0, 400));
-      u.lang = 'zh-CN';
-      u.rate = 1.02;
-      let fired = false;
-      const once = function () {
-        if (fired) return;
-        fired = true;
-        done();
-      };
-      u.onend = once;
-      u.onerror = once;
-      /* 保险：onend 偶尔不触发（尤其移动端），按字数兜一个上限 */
-      window.setTimeout(once, Math.max(4000, Math.min(40000, String(text || '').length * 320 + 4000)));
-      window.speechSynthesis.speak(u);
-    } catch (e) {
-      window.setTimeout(done, 2500);
-    }
+  /* 只有文字：按字数估一个阅读时间，到点自动翻下一段。
+   * seq 保证暂停 / 跳段 / 换课之后，旧的回调不会乱翻。 */
+  function lecturePace(text, seq) {
+    const ms = Math.max(3500, Math.min(28000, String(text || '').length * 260 + 1200));
+    return setTimeout(function () { realAdvance(text, seq); }, ms);
   }
 
   function realAdvance(text, seq) {
@@ -5257,7 +5210,7 @@
     lv.playing = true;
     lv.seq++;
     const seg = lv.script[lv.idx] || lv.script[0];
-    lectureSpeak(seg ? seg.text : '', lv.seq);
+    lecturePace(seg ? seg.text : '', lv.seq);
     rerenderLive();
   }
 
@@ -5265,7 +5218,6 @@
     const lv = lectureState();
     lv.playing = false;
     lv.seq++;
-    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { }
     rerenderLive();
   }
 
@@ -5276,7 +5228,7 @@
     lv.seq++;
     if (lv.playing) {
       const seg = lv.script[lv.idx];
-      lectureSpeak(seg ? seg.text : '', lv.seq);
+      lecturePace(seg ? seg.text : '', lv.seq);
     }
     rerenderLive();
   }
@@ -5290,7 +5242,7 @@
     rerenderLive();
     if (lv.playing) {
       const seg = lv.script[lv.idx];
-      lectureSpeak(seg ? seg.text : '', lv.seq);
+      lecturePace(seg ? seg.text : '', lv.seq);
     }
   }
 
@@ -5307,7 +5259,7 @@
 
     parts.push('<div class="card lv-note">' +
       '<b>🎬 这是一节直播课</b>' +
-      '<p>老师会把这一节的<b>要点、做法、常见错误、自检</b>改成口语讲稿，一段一段讲给你听' +
+      '<p>老师会把这一节的<b>要点、做法、常见错误、自检</b>改成口语讲稿，按你的阅读节奏一段段自动往下走' +
       '（自动往下讲，你可以随时暂停、跳段、举手提问）。' +
       '摄像头只用在你点「让它看一眼」的时候。</p>' +
     '</div>');
@@ -5317,12 +5269,7 @@
       (lo && lo.goal ? '<p class="lv-profile">🎯 ' + escapeHtml(lo.goal) + '</p>' : '') +
       (lv.profile ? '<p class="lv-profile">我会按你的情况讲：' + escapeHtml(lv.profile) + '</p>'
         : '<p class="lv-profile lv-profile-empty">没填脸型/眼型/肤质，我会按通用情况讲。</p>') +
-      '<div class="lv-toggle-row">' +
-        '<label class="lv-toggle lv-toggle-sm"><input type="checkbox" id="lv-sp"' + (lv.speech ? ' checked' : '') + ' />' +
-          '<span>语音播报（建议开）</span></label>' +
-      '</div>' +
       livePhotoBarHtml(lv) +
-      ttsControlsHtml({ compact: true }) +
       '<button class="btn primary" id="lv-go-live"' + (lv.pending ? ' disabled' : '') + '>' +
         (lv.pending ? '正在准备讲稿…' : '🔴 开始上课') + '</button>' +
       '<p class="hint">准备讲稿会花一次调用（约 2400 token 上限）。</p>' +
@@ -5330,9 +5277,6 @@
 
     box.innerHTML = parts.join('');
 
-    const sp = $('#lv-sp');
-    if (sp) sp.addEventListener('change', function () { lectureState().speech = !!sp.checked; });
-    bindTts(box);
     bindLivePhoto(box);
 
     const go = $('#lv-go-live');
@@ -5404,9 +5348,7 @@
         '<button class="btn ' + (lv.playing ? 'ghost' : 'primary') + '" id="lv-lplay">' +
           (lv.playing ? '⏸ 暂停' : '▶ 继续讲') + '</button>' +
         '<button class="btn ghost" id="lv-lnext">' + (idx >= list.length - 1 ? '⏭ 下课' : '⏭ 下一段') + '</button>' +
-        '<button class="btn ghost" id="lv-lsay">🔊 重念</button>' +
       '</div>' +
-      ttsControlsHtml({ compact: true }) +
     '</div>');
 
     /* 举手 / 摄像头 */
@@ -5454,10 +5396,6 @@
     if (gprev) gprev.addEventListener('click', function () { lectureGoto(lv.idx - 1); });
     const gnext = box.querySelector('#lv-lnext');
     if (gnext) gnext.addEventListener('click', function () { lectureNext(); });
-    const gsay = box.querySelector('#lv-lsay');
-    if (gsay) gsay.addEventListener('click', function () {
-      const st = list[lv.idx]; if (st) { lv.seq++; lectureSpeak(st.text, lv.seq); }
-    });
     const gcheck = box.querySelector('#lv-lcheck');
     if (gcheck) gcheck.addEventListener('click', lectureCheck);
     const gauto = box.querySelector('#lv-auto2');
@@ -5476,7 +5414,6 @@
     box.querySelectorAll('[data-seg]').forEach(function (b) {
       b.addEventListener('click', function () { lectureGoto(Number(b.dataset.seg)); });
     });
-    bindTts(box);
     bindLivePhoto(box);
   }
 
@@ -5502,7 +5439,6 @@
     const wasPlaying = lv.playing;
     lv.playing = false;
     lv.seq++;
-    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { }
 
     const lo = lv.target.lessonId ? lessonById(lv.target.lessonId) : null;
     const seg = (lv.script && lv.script[lv.idx]) ? lv.script[lv.idx].text : '';
@@ -5524,7 +5460,7 @@
       if (el) el.innerHTML = liveAskLogHtml(lv);
       /* 把回答念出来 */
       lv.seq++;
-      lectureSpeak('我回答一下：' + r.reply, lv.seq);
+      lecturePace('我回答一下：' + r.reply, lv.seq);
       /* 回答完如果本来在播，接着讲 */
       if (wasPlaying) {
         window.setTimeout(function () {
@@ -5563,7 +5499,7 @@
       const el = $('#lv-log');
       if (el) el.innerHTML = liveAskLogHtml(lv);
       lv.seq++;
-      lectureSpeak(String(r.reply).replace(/^结论\s*[:：][^\n]*\n?/, ''), lv.seq);
+      lecturePace(String(r.reply).replace(/^结论\s*[:：][^\n]*\n?/, ''), lv.seq);
       rerenderLive();
     }).catch(function (e) {
       if (!auto) toast((e && e.message) || '没看成');
@@ -5575,7 +5511,6 @@
     const lv = lectureState();
     lv.playing = false;
     lv.seq++;
-    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { }
     liveStop();
     const box = $('#live-body');
     if (!box) return;
@@ -5660,7 +5595,6 @@
     lv.coach = false;
     lv.coachBusy = false;
     if (lv.coachTimer) { try { clearInterval(lv.coachTimer); } catch (e) { } lv.coachTimer = null; }
-    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { }
     if (!silent) rerenderLive();
   }
 
@@ -5714,7 +5648,6 @@
       const say = (b.next || '') +
         (b.why && b.why !== '无' ? '。为什么：' + b.why : '') +
         (b.tip && b.tip !== '无' ? '。注意：' + b.tip : '');
-      if (say) liveSpeak(say);
       rerenderLive();
     }).catch(function (e) {
       lv.coachBusy = false;
@@ -5754,122 +5687,6 @@
     '</div>';
   }
 
-  /* ---------- 语音（TTS）：可换声音、可调速 ----------
-   * 系统默认那个中文声音往往是最老的（Windows 上通常叫 Microsoft Huihui），听着像机器人。
-   * 这里把候选按「自然程度」排序，优先挑 Natural / Neural / Online / 晓晓 / 云希 / Google 这类；
-   * 并且让用户自己选，选择记在 prefs 里。
-   */
-  function ttsPrefs() {
-    let p = {};
-    try { p = S.getPrefs() || {}; } catch (e) { p = {}; }
-    return { voice: p.ttsVoice || '', rate: Number(p.ttsRate) || 1 };
-  }
-
-  function ttsSave(patch) {
-    try { S.setPrefs(patch); } catch (e) { /* 存不下也不影响使用 */ }
-  }
-
-  function ttsRawList() {
-    try { return (window.speechSynthesis && window.speechSynthesis.getVoices()) || []; }
-    catch (e) { return []; }
-  }
-
-  /* 中文声音排在前面，再按自然程度打分 */
-  function ttsList() {
-    const all = ttsRawList();
-    const zh = all.filter(function (v) {
-      return /zh|Chinese|中文|普通话|國語/i.test((v.lang || '') + ' ' + (v.name || ''));
-    });
-    const pool = zh.length ? zh : all;
-    const score = function (v) {
-      const n = String(v.name || '');
-      let s = 0;
-      if (/natural|neural|online|premium|enhanced|natural/i.test(n)) s += 100;
-      if (/xiaoxiao|xiaoyi|yunxi|yunyang|yunjian|xiaoqiu|tingting|meijia|sinji|google/i.test(n)) s += 50;
-      if (/huihui|kangkang|yaoyao/i.test(n)) s -= 5;      // 老声音，通常更难听
-      if (v.localService === false) s += 10;               // 在线声音一般更自然
-      return s;
-    };
-    return pool.slice().sort(function (a, b) { return score(b) - score(a); });
-  }
-
-  function ttsResolve() {
-    const list = ttsList();
-    if (!list.length) return null;
-    const want = ttsPrefs().voice;
-    if (want) {
-      const hit = list.filter(function (v) { return v.voiceURI === want || v.name === want; })[0];
-      if (hit) return hit;
-    }
-    return list[0];
-  }
-
-  function liveSpeak(text) {
-    const lv = liveState();
-    if (!lv.speech) return;
-    try {
-      if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
-      window.speechSynthesis.cancel();
-      const p = ttsPrefs();
-      const u = new window.SpeechSynthesisUtterance(String(text || '').slice(0, 260));
-      const v = ttsResolve();
-      if (v) { try { u.voice = v; } catch (e) { } }
-      u.lang = (v && v.lang) || 'zh-CN';
-      u.rate = Math.max(0.6, Math.min(1.6, p.rate || 1));
-      u.pitch = 1;
-      window.speechSynthesis.speak(u);
-    } catch (e) { /* 不支持就算了，不影响文字 */ }
-  }
-
-  /* 语音设置条：声音下拉 + 语速 + 试听 */
-  function ttsControlsHtml(opts) {
-    const list = ttsList();
-    const cur = ttsResolve();
-    const p = ttsPrefs();
-    const compact = opts && opts.compact;
-    if (!list.length) {
-      return '<div class="tts-row"><span class="tts-note">这个浏览器还没加载出中文语音（刷新或换 Edge 试试）</span></div>';
-    }
-    const rateOpts = [['0.85', '慢一点'], ['1', '正常'], ['1.15', '快一点'], ['1.3', '更快']];
-    return '<div class="tts-row' + (compact ? ' is-compact' : '') + '">' +
-      '<span class="tts-label">🎙 声音</span>' +
-      '<select id="tts-voice" class="tts-select">' + list.map(function (v) {
-        return '<option value="' + escapeHtml(v.voiceURI) + '"' +
-          (cur && v.voiceURI === cur.voiceURI ? ' selected' : '') + '>' +
-          escapeHtml(String(v.name).slice(0, 30)) + '</option>';
-      }).join('') + '</select>' +
-      '<select id="tts-rate" class="tts-rate">' + rateOpts.map(function (r) {
-        return '<option value="' + r[0] + '"' + (String(p.rate) === r[0] ? ' selected' : '') + '>' +
-          r[1] + '</option>';
-      }).join('') + '</select>' +
-      '<button type="button" class="btn ghost tts-test" id="tts-test">试听</button>' +
-      '<span class="tts-hint">想更像真人：用 <b>Edge</b> 打开（有「晓晓/云希」这类自然声音）</span>' +
-    '</div>';
-  }
-
-  function bindTts(box) {
-    const sel = box.querySelector('#tts-voice');
-    if (sel) {
-      sel.addEventListener('change', function () {
-        ttsSave({ ttsVoice: sel.value });
-        liveSpeak('好，换成这个声音。接下来做这一步。');
-      });
-    }
-    const rate = box.querySelector('#tts-rate');
-    if (rate) {
-      rate.addEventListener('change', function () {
-        ttsSave({ ttsRate: Number(rate.value) || 1 });
-        liveSpeak('这个语速可以吗。');
-      });
-    }
-    const test = box.querySelector('#tts-test');
-    if (test) {
-      test.addEventListener('click', function () {
-        liveSpeak('第一步，先把粉底点四处。为什么这样：分点才涂得匀。');
-      });
-    }
-  }
-
   /* ============ 初始化 ============ */
   function init() {
     // 界面主题与风格（要尽早，避免闪一下默认配色）
@@ -5883,17 +5700,6 @@
     // 新手课程入口卡上的进度
     updateCourseEntry();
 
-    // 语音列表是异步加载的（Chrome 第一次 getVoices 返回空），加载好之后重画一次
-    try {
-      if (window.speechSynthesis && window.speechSynthesis.addEventListener) {
-        window.speechSynthesis.addEventListener('voiceschanged', function () {
-          try {
-            const r = currentRoute();
-            if (r.view === 'live') rerenderLive();
-          } catch (e) { }
-        });
-      }
-    } catch (e) { /* 不支持就算了 */ }
 
     // 产品推荐：从品类详情返回目录
     const shopBack = $('#btn-shop-back');
