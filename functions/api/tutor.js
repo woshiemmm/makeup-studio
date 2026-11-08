@@ -45,12 +45,15 @@ const LIMIT = {
 };
 
 /* 每种模式的输出上限。备课要给出完整计划，所以给得多；
- * 看画面是一句话判断，给得少 —— 这是成本控制的关键。 */
+ * 看画面是一句话判断，给得少 —— 这是成本控制的关键。
+ * 注意：如果模型带思考过程，token 会先被 reasoning 吃掉，
+ * 上限太小就会出现「finish_reason=length 但 content 为空」，
+ * 所以这里的基线比"纯回答字数"留了余量。 */
 const MODE_TOKENS = {
-  ask: 600,
-  review: 600,
-  plan: 1400,
-  check: 350
+  ask: 900,
+  review: 900,
+  plan: 1600,
+  check: 500
 };
 
 /* 固定拒答话术：预处理层和系统提示词共用，保证说法一致 */
@@ -276,59 +279,97 @@ export async function onRequestPost(context) {
     { role: 'user', content: content }
   ];
 
-  /* ---- 请求模型 ---- */
-  let upstream;
-  try {
-    upstream = await fetch(UPSTREAM, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + env.DEEPSEEK_API_KEY
-      },
-      body: JSON.stringify({
-        model: String(env.ALLOWED_MODELS || 'deepseek-flash').split(',')[0].trim() || 'deepseek-flash',
-        messages: messages,
-        max_tokens: MODE_TOKENS[mode] || 600,
-        temperature: mode === 'plan' ? 0.6 : (mode === 'check' ? 0.3 : 0.5),
-        stream: false
-      }),
-      signal: AbortSignal.timeout(60000)
-    });
-  } catch (e) {
-    return fail('小老师暂时联系不上：' + (e && e.message ? e.message : e), 502, env, 'UPSTREAM');
+  /* ---- 请求模型 ----
+   * 这里有一次「空回复就放大重试」的逻辑。
+   * 起因：线上出现过「模型返回 200 但 content 为空」，用户只看到一句
+   * 「小老师这次没说出什么」。最可能的原因是模型带思考过程 ——
+   * token 先花在 reasoning 上，max_tokens 一到就直接结束，content 就是空的。
+   * 所以：空回复时先看 finish_reason / 有没有 reasoning_content，
+   * 判断是「上限不够」就放大 3 倍重试一次，而不是直接报错。
+   */
+  const MODEL = String(env.TUTOR_MODEL || env.ALLOWED_MODELS || 'deepseek-flash')
+    .split(',')[0].trim() || 'deepseek-flash';
+  const TEMP = mode === 'plan' ? 0.6 : (mode === 'check' ? 0.3 : 0.5);
+
+  /* 从 message 里取正文：兼容 string / 数组分段 / content 为空但只有思考 */
+  function extractAnswer(message) {
+    const m = message || {};
+    const c = m.content;
+    if (typeof c === 'string' && c.trim()) return c;
+    if (Array.isArray(c)) {
+      const joined = c.map(function (p) { return (p && p.text) ? p.text : ''; }).join('');
+      if (joined.trim()) return joined;
+    }
+    return '';
   }
 
-  const text = await upstream.text();
-  if (!upstream.ok) {
-    return fail('模型接口返回 ' + upstream.status + '：' + text.slice(0, 200), 502, env, 'UPSTREAM_STATUS');
-  }
-
-  let data;
-  try { data = JSON.parse(text); } catch (e) { return fail('模型返回的不是 JSON。', 502, env, 'UPSTREAM_JSON'); }
-
-  const choice = (data.choices && data.choices[0]) || {};
-  const msg = choice.message || {};
+  let data = null;
   let reply = '';
-  if (typeof msg.content === 'string') {
-    reply = msg.content;
-  } else if (Array.isArray(msg.content)) {
-    reply = msg.content.map(function (p) { return p && p.text ? p.text : ''; }).join('');
-  }
-  reply = reply.trim();
+  let finish = '';
+  let maxTok = MODE_TOKENS[mode] || MODE_TOKENS.ask;
 
-  if (!reply) return fail('小老师这次没说出什么，换个说法再试一次。', 502, env, 'EMPTY_REPLY');
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    let upstream;
+    try {
+      upstream = await fetch(UPSTREAM, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + env.DEEPSEEK_API_KEY
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: messages,
+          max_tokens: maxTok,
+          temperature: TEMP,
+          stream: false
+        }),
+        signal: AbortSignal.timeout(60000)
+      });
+    } catch (e) {
+      return fail('小老师暂时联系不上：' + (e && e.message ? e.message : e), 502, env, 'UPSTREAM');
+    }
+
+    const text = await upstream.text();
+    if (!upstream.ok) {
+      return fail('模型接口返回 ' + upstream.status + '：' + text.slice(0, 200), 502, env, 'UPSTREAM_STATUS');
+    }
+
+    try { data = JSON.parse(text); } catch (e) { return fail('模型返回的不是 JSON。', 502, env, 'UPSTREAM_JSON'); }
+
+    const choice = (data.choices && data.choices[0]) || {};
+    finish = choice.finish_reason || '';
+    reply = extractAnswer(choice.message).trim();
+    if (reply) break;
+
+    /* 空回复：判断是不是「上限不够 / 服务端资源紧张」，是就放大重试一次 */
+    const thinking = !!(choice.message && choice.message.reasoning_content);
+    const retriable = thinking || finish === 'length' ||
+      finish === 'insufficient_system_resource' || finish === '';
+    if (attempt >= 2 || !retriable) break;
+    maxTok = Math.min(maxTok * 3, 4096);
+  }
+
+  if (!reply) {
+    /* 不要只说「没说出什么」—— 把 finish_reason 一起给出来，下次一眼能定位 */
+    return fail('小老师这次没说出内容（finish_reason=' + (finish || '空') + '）。再点一次通常就好了；' +
+      '若反复出现，多半是模型把这轮 token 花在思考上了 —— 可以在 Cloudflare 环境变量里加 ' +
+      'TUTOR_MODEL=deepseek-chat，只给小老师单独换个模型。',
+      502, env, 'EMPTY_REPLY');
+  }
 
   /* 防御：万一模型把系统提示词回显出来，截掉 */
   if (reply.indexOf('【范围锁') >= 0 || reply.indexOf('系统提示词') >= 0) {
-    return jsonResponse({ reply: REFUSAL, blocked: true, reason: 'leak', usage: data.usage || null }, 200, env);
+    return jsonResponse({ reply: REFUSAL, blocked: true, reason: 'leak', usage: (data && data.usage) || null }, 200, env);
   }
 
   return jsonResponse({
     reply: reply,
     blocked: false,
-    model: data.model || '',
-    truncated: choice.finish_reason === 'length',
-    usage: data.usage || null
+    model: (data && data.model) || '',
+    truncated: finish === 'length',
+    finish: finish,
+    usage: (data && data.usage) || null
   }, 200, env);
 }
 

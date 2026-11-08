@@ -91,6 +91,12 @@ git push -u origin main
 | `ACCESS_CODE` | Secret（加密） | 建议填。访问口令，防止陌生人盗刷你的额度 |
 | `ALLOWED_ORIGIN` | 文本 | 建议填你的域名，如 `https://makeup-studio.pages.dev` |
 | `ALLOWED_MODELS` | 文本 | 选填，默认 `deepseek-flash` |
+| `TUTOR_MODEL` | 文本 | 选填。**只给「AI 小老师」和「面对面教学」用的模型**，不写就跟随 `ALLOWED_MODELS`。如果小老师经常回「这次没说出内容」，把它设成 `deepseek-chat`（这两个功能不需要看图，换非思考模型更快更省） |
+| `TUTOR_RATE_LIMIT` | 文本 | 选填，默认 `10`。小老师每分钟每 IP 的调用上限 |
+
+> 关于 `TUTOR_MODEL`：妆容识别 / 肤质分析要「看图」，必须用支持视觉的模型（`deepseek-flash`）；
+> 而小老师回答文字问题、面对面教学判断画面，用 `deepseek-chat` 往往更稳。
+> 两个变量分开，就能各用各的，互不影响。
 
 > 注意：**不要**把 API Key 写进 `functions/api/chat/completions.js` 或前端任何文件里。
 > 只放在这里，浏览器永远看不到它。
