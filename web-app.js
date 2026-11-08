@@ -97,6 +97,7 @@
     syncNav(routeKey(r));            // 维护站内导航栈（供悬浮返回按钮使用）
 
     $$('.nav-item').forEach(function (b) { b.classList.toggle('active', b.dataset.view === r.view); });
+    $$('.tabbar-item').forEach(function (b) { b.classList.toggle('active', b.dataset.view === r.view); });
     $$('.view').forEach(function (v) { v.classList.toggle('active', v.id === 'view-' + r.view); });
 
     if (r.view === 'process') {
@@ -1521,7 +1522,14 @@
         '<p class="sub">' + E(look.tagline) + '</p></div>');
     }
 
-    /* ② 专属跟练步骤 */
+    /* ② 顶部动作：识别完立刻能决定干什么，不用滚到底 */
+    parts.push('<div class="apply-box apply-top" data-act-top="1">' +
+      '<button class="btn primary" data-act="go" type="button">🎨 学这款的完整教学 →</button>' +
+      (r.restore ? '<button class="btn ghost" data-act="live" type="button">🎥 用这张图教我</button>' : '') +
+      '<a class="btn ghost" href="#/live">🎥 换个目标练</a>' +
+      '</div>');
+
+    /* ③ 专属跟练步骤 */
     parts.push(stepsHtml(r.steps));
 
     /* ③ 全网找同款 */
@@ -1606,23 +1614,22 @@
     }
 
     parts.push('<div class="apply-box">' +
-      '<button class="btn primary" id="btn-go-look" type="button">🎨 去学习「' + E(look.name) + '」的完整教学 →</button>' +
-      (r.restore ? '<button class="btn ghost" id="btn-live-recognize" type="button">🎥 用这张图面对面教我</button>' : '') +
+      '<button class="btn primary" data-act="go" type="button">🎨 去学习「' + E(look.name) + '」的完整教学 →</button>' +
+      (r.restore ? '<button class="btn ghost" data-act="live" type="button">🎥 用这张图面对面教我</button>' : '') +
       '</div>');
 
     box.innerHTML = parts.join('');
 
-    /* ---- 事件绑定 ---- */
-    const goBtn = $('#btn-go-look');
-    if (goBtn) goBtn.addEventListener('click', function () { selectLook(look.id); });
-
-    const liveRec = $('#btn-live-recognize');
-    if (liveRec) {
-      liveRec.addEventListener('click', function () {
+    /* ---- 事件绑定（顶部和底部的动作按钮都绑上） ---- */
+    box.querySelectorAll('[data-act="go"]').forEach(function (b) {
+      b.addEventListener('click', function () { selectLook(look.id); });
+    });
+    box.querySelectorAll('[data-act="live"]').forEach(function (b) {
+      b.addEventListener('click', function () {
         const want = '#/live/restore';
         if (location.hash === want) applyRoute(); else location.hash = want;
       });
-    }
+    });
 
     box.querySelectorAll('[data-rank-look]').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -3919,6 +3926,15 @@
         (done ? ' · <b class="cr-done-tag">已学完</b>' : '') + '</em></p>' +
     '</div>');
 
+    /* 顶部动作条：最常用的三件事，一进页面就能点，不用往下翻 */
+    parts.push('<div class="cr-actions">' +
+      '<a class="btn primary" href="#/live/class/' + escapeHtml(lo.id) + '">🔴 上直播课</a>' +
+      '<a class="btn ghost" href="#/live/lesson/' + escapeHtml(lo.id) + '">🎥 练手法</a>' +
+      '<button class="btn ghost" type="button" data-cr-done="1">' +
+        (done ? '✓ 已学完' : '✓ 标记学完') + '</button>' +
+      '</div>');
+    parts.push('<p class="cr-actions-tip">直播课 = 老师照着这节课开讲；练手法 = 它盯着你一个动作一个动作纠。</p>');
+
     if (lo.goal) {
       parts.push('<div class="card cr-goalcard"><b>🎯 学完你能</b><p>' + escapeHtml(lo.goal) + '</p></div>');
     }
@@ -3978,19 +3994,6 @@
     /* AI 小老师：练完自检之后，把这一节课 + 你的练习交给它判 */
     parts.push(tutorCardHtml(lo));
 
-    /* 直播课：老师照着这节课的内容开讲（主推） */
-    parts.push('<div class="card cr-live-cta">' +
-      '<div class="card-title"><h3>🎥 上这节的直播课</h3>' +
-        '<span class="hint">老师照着这节课开讲</span></div>' +
-      '<p>把这一节的<b>要点、做法、常见错误、自检</b>变成口语讲稿，一段一段往下走 —— ' +
-      '像真人上课那样自动往下讲，你可以随时<b>暂停、跳段、举手提问</b>，' +
-      '练的时候还能让它看一眼你画得对不对。离开页面摄像头立刻关。</p>' +
-      '<div class="lv-alt">' +
-        '<a class="btn primary" href="#/live/class/' + escapeHtml(lo.id) + '">🔴 开始上课 →</a>' +
-        '<a class="btn ghost" href="#/live/lesson/' + escapeHtml(lo.id) + '">只想让它盯着我练手法</a>' +
-      '</div>' +
-    '</div>');
-
     if (lo.videos && lo.videos.length) {
       parts.push('<div class="card"><div class="card-title"><h3>📺 配套视频</h3>' +
         '<span class="hint">B 站，点开新窗口看</span></div>' +
@@ -4012,7 +4015,7 @@
 
     parts.push('<div class="cr-foot">' +
       (prev ? '<a class="btn ghost" href="#/course/' + escapeHtml(prev.id) + '">← 上一课</a>' : '<span></span>') +
-      '<button class="btn ' + (done ? 'ghost' : 'primary') + '" id="cr-done">' +
+      '<button class="btn ' + (done ? 'ghost' : 'primary') + '" id="cr-done" data-cr-done="1">' +
         (done ? '✓ 已学完（点此取消）' : '标记为学完') + '</button>' +
       (next ? '<a class="btn ' + (done ? 'primary' : 'ghost') + '" href="#/course/' + escapeHtml(next.id) + '">下一课 →</a>' : '<span></span>') +
     '</div>');
@@ -4033,15 +4036,14 @@
       });
     });
 
-    const btn = $('#cr-done');
-    if (btn) {
+    box.querySelectorAll('[data-cr-done]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         const nowDone = !courseProg()[lo.id];
         S.markLesson(lo.id, nowDone);
         toast(nowDone ? '✅ 已标记学完' + (next ? '，接着学下一课吧' : '') : '已取消完成标记');
         renderCourse(lo.id);
       });
-    }
+    });
 
     /* AI 小老师（在 ⑤ 自检之后渲染，这里绑定交互） */
     bindTutor(box, lo);
@@ -5692,9 +5694,15 @@
     // 界面主题与风格（要尽早，避免闪一下默认配色）
     applyAppearance();
 
-    // 导航
+    // 导航（侧栏 + 手机底部）
     $$('.nav-item').forEach(function (b) {
       b.addEventListener('click', function () { switchView(b.dataset.view); });
+    });
+    $$('.tabbar-item').forEach(function (b) {
+      b.addEventListener('click', function () {
+        switchView(b.dataset.view);
+        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+      });
     });
 
     // 新手课程入口卡上的进度

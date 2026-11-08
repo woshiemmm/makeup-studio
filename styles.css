@@ -1408,7 +1408,7 @@ body {
 
 /* 移动端：侧边栏变成顶部横条，把按钮放到左下角更顺手 */
 @media (max-width: 820px) {
-  .back-fab { left: 12px !important; top: auto; bottom: 18px; padding: 11px 18px 11px 15px; }
+  .back-fab { left: 12px !important; top: auto; bottom: 84px; padding: 11px 18px 11px 15px; }
 }
 
 /* ============================================================
@@ -2075,8 +2075,56 @@ ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
   .stage-layout { grid-template-columns: 1fr; }
   .stage-media { position: static; }
 }
+
+/* ============================================================
+   手机底部快捷导航
+   ============================================================ */
+.tabbar { display: none; }
+.tabbar-item {
+  flex: 1 1 0;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 7px 4px 6px;
+  border: 0; background: none; cursor: pointer;
+  font-family: inherit; color: var(--ink-soft);
+  -webkit-tap-highlight-color: transparent;
+}
+.tabbar-item span { font-size: 19px; line-height: 1.15; filter: saturate(.85); transition: transform .18s var(--ease); }
+.tabbar-item b { font-size: 10.5px; font-weight: 700; letter-spacing: .4px; }
+.tabbar-item.active { color: var(--primary-2); }
+.tabbar-item.active span { transform: translateY(-1px) scale(1.08); filter: none; }
+.tabbar-item.active b { font-weight: 800; }
+
+/* 课时页顶部动作条 */
+.cr-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
+.cr-actions .btn { display: inline-block; text-decoration: none; }
+.cr-actions-tip { margin: 8px 0 0; font-size: 11.5px; line-height: 1.7; color: var(--ink-faint); }
+
+/* 识别结果的顶部动作条：紧一点、别太抢 */
+.apply-box.apply-top { margin: 0 0 16px; text-align: left; display: flex; flex-wrap: wrap; gap: 8px; }
+.apply-box.apply-top .btn { text-decoration: none; }
+
 @media (max-width: 820px) {
   .app { flex-direction: column; }
+  /* 底部快捷导航：常驻，主内容留出空间 */
+  .tabbar {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
+    background: rgba(255,255,255,.96);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -4px 18px rgba(var(--primary-rgb), .07);
+  }
+  /* 侧栏导航压成一行可横滑，给内容让高度（底部栏已经覆盖了高频入口） */
+  .nav {
+    flex-direction: row; flex-wrap: nowrap; gap: 5px;
+    overflow-x: auto; overflow-y: hidden;
+    width: 100%;
+    scrollbar-width: none; -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-item { flex: 0 0 auto; white-space: nowrap; }
   .sidebar {
     width: 100%; height: auto; position: sticky; top: 0; z-index: 20;
     flex-direction: row; align-items: center; flex-wrap: wrap;
@@ -2095,7 +2143,7 @@ ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
   .nav-item { padding: 9px 12px; font-size: 13.5px; }
   .nav-item.active::before { display: none; }
   .sidebar-foot { display: none; }
-  .main { padding: 20px 14px 56px; }
+  .main { padding: 20px 14px 96px; }
   .page-head h2 { font-size: 24px; }
   .form-grid { grid-template-columns: 1fr; }
   .look-grid { grid-template-columns: 1fr 1fr; }
