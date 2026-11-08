@@ -2776,6 +2776,20 @@ ul.clean li { font-size: 13px; line-height: 1.85; color: var(--ink-soft); }
   .tts-select { max-width: 100%; flex: 1 1 100%; }
 }
 
+/* ---- 画面来源条（摄像头 / 上传照片） ---- */
+.lv-photo {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 10px 0;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-grad-2);
+  border: 1px solid var(--line);
+}
+.lv-photo-src { flex: 1 1 auto; font-size: 11.5px; color: var(--ink-soft); }
+.lv-photo-src b { color: var(--ink); }
+.lv-photo-pick { font-size: 11.5px; padding: 5px 10px; }
+.lv-photo-clear { font-size: 11px; padding: 4px 9px; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .001ms !important;

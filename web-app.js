@@ -4252,7 +4252,8 @@
         log: [], checks: 0, refAnalysis: null, lastSim: null,
         pending: false, cameraError: '', camTried: false,
         /* 手把手带练 */
-        coach: false, coachBusy: false, coachTimer: null, coachEvery: 15000, board: null, lastHint: ''
+        coach: false, coachBusy: false, coachTimer: null, coachEvery: 15000, board: null, lastHint: '',
+        uploadImage: '', uploadKB: 0, lastSentKB: 0, lastSaw: ''
       };
     }
     return state.live;
@@ -4464,6 +4465,8 @@
   /* ---------- 抓一帧（摄像头或画布） ---------- */
   function liveGrabFrame() {
     const lv = liveState();
+    /* 上传的照片优先：没摄像头 / 不方便实时拍的时候靠它 */
+    if (lv.uploadImage) return lv.uploadImage;
     const video = $('#lv-video');
     if (!lv.stream || !video || !video.videoWidth) return '';
     try {
@@ -4492,6 +4495,75 @@
     return s;
   }
 
+  /* ---------- 画面来源：摄像头 或 上传的照片 ---------- */
+  function liveHasView(lv) { return !!(lv.uploadImage || lv.stream); }
+
+  function liveUploadPhoto(file) {
+    if (!file) return Promise.resolve('');
+    return V.compressImageFile(file, 900, 0.8).then(function (url) {
+      const lv = liveState();
+      lv.uploadImage = url;
+      lv.uploadKB = Math.max(1, Math.round(url.length * 0.75 / 1024));
+      toast('照片已载入（' + lv.uploadKB + ' KB），点「让它看一眼」就发给它', { type: 'ok' });
+      rerenderLive();
+      return url;
+    }).catch(function (e) {
+      toast((e && e.message) || '这张照片用不了');
+      return '';
+    });
+  }
+
+  function livePhotoBarHtml(lv) {
+    const src = lv.uploadImage
+      ? '你上传的照片（' + (lv.uploadKB || '?') + ' KB）'
+      : (lv.stream ? '摄像头' : '还没有画面');
+    return '<div class="lv-photo">' +
+      '<span class="lv-photo-src">📷 画面来源：<b>' + escapeHtml(src) + '</b>' +
+        (lv.lastSentKB ? '　·　上次发了 <b>' + lv.lastSentKB + ' KB</b>' : '') + '</span>' +
+      '<label class="crt-attach lv-photo-pick">' +
+        '<input type="file" accept="image/*" id="lv-photo-file" hidden />' +
+        '<span>📷 ' + (lv.uploadImage ? '换一张照片' : '上传照片') + '</span>' +
+      '</label>' +
+      (lv.uploadImage ? '<button type="button" class="btn ghost lv-photo-clear" id="lv-photo-clear">改用摄像头</button>' : '') +
+    '</div>';
+  }
+
+  function bindLivePhoto(box) {
+    const f = box.querySelector('#lv-photo-file');
+    if (f) {
+      f.addEventListener('change', function () {
+        const file = f.files && f.files[0];
+        if (file) liveUploadPhoto(file);
+        f.value = '';
+      });
+    }
+    const c = box.querySelector('#lv-photo-clear');
+    if (c) c.addEventListener('click', function () {
+      const lv = liveState();
+      lv.uploadImage = '';
+      lv.uploadKB = 0;
+      rerenderLive();
+    });
+  }
+
+  /* 点了「让它看一眼」但没有画面：说清楚，并直接弹选图 */
+  function liveNeedView() {
+    toast('还没有画面 —— 打开摄像头，或上传一张照片');
+    const f = $('#lv-photo-file');
+    if (f) { try { f.click(); } catch (e) { } }
+    return false;
+  }
+
+  /* 它说看不清 → 直接告诉用户，别让人猜 */
+  function liveCheckSaw(text) {
+    const lv = liveState();
+    const t = String(text || '');
+    const blind = /看不到|看不见|看不清|没有画面|太暗|太远|偏到画面外/.test(t);
+    lv.lastSaw = blind ? 'blind' : 'ok';
+    if (blind) toast('它说看不清你的画面 —— 换个角度或亮点的地方再来一次');
+    return !blind;
+  }
+
   /* ---------- 主渲染 ---------- */
   function renderLive(kind, rest) {
     const box = $('#live-body');
@@ -4514,7 +4586,8 @@
           /* 直播课专用 */
           script: null, idx: 0, playing: false, seq: 0, askLog: [], asking: false,
           /* 手把手带练 */
-          coach: false, coachBusy: false, coachTimer: null, coachEvery: 15000, board: null, lastHint: ''
+          coach: false, coachBusy: false, coachTimer: null, coachEvery: 15000, board: null, lastHint: '',
+          uploadImage: '', uploadKB: 0, lastSentKB: 0, lastSaw: ''
         };
       } else {
         lv.kind = '';
@@ -4795,13 +4868,14 @@
       '</div>' +
       '<div class="lv-cam-tools">' +
         (lv.coach ? '' : '<button class="btn primary" id="lv-coach-start">🔴 手把手带练</button>') +
-        '<button class="btn ghost" id="lv-look-now"' + (lv.stream || lv.coach ? '' : ' disabled') + '>👀 让它看一下</button>' +
+        '<button class="btn ghost" id="lv-look-now">👀 让它看一下</button>' +
         '<label class="lv-toggle lv-toggle-sm">' +
           '<input type="checkbox" id="lv-speech"' + (lv.speech ? ' checked' : '') + ' />' +
           '<span>语音播报</span>' +
         '</label>' +
         '<button class="btn ghost" id="lv-cam-off-btn"' + (lv.stream ? '' : ' hidden') + '>关摄像头</button>' +
       '</div>' +
+      livePhotoBarHtml(lv) +
       ttsControlsHtml({ compact: true }) +
       '<p class="hint">已让 AI 看 <b>' + lv.checks + '</b> / ' + LIVE_MAX_CHECKS + ' 次' +
         (isLesson ? '　·　练的是手法，不算色调吻合度' :
@@ -4846,6 +4920,7 @@
     liveBindControls(box);
     bindCoach(box);
     bindTts(box);
+    bindLivePhoto(box);
 
     /* 进入上课自动尝试开摄像头（失败就显示按钮让人手动开） */
     if (!lv.stream) liveStartCamera();
@@ -4995,11 +5070,13 @@
       if (lv.timer) { clearInterval(lv.timer); lv.timer = null; lv.autoOn = false; }
       return;
     }
+    if (!liveHasView(lv)) { if (!auto) liveNeedView(); return; }
     const frame = liveGrabFrame();
     if (!frame) {
-      if (!auto) toast('还拿不到画面，先打开摄像头');
+      if (!auto) liveNeedView();
       return;
     }
+    lv.lastSentKB = Math.max(1, Math.round(frame.length * 0.75 / 1024));
     const sim = liveSimilarity();
     const step = lv.plan.steps[lv.stepIndex] || {};
 
@@ -5017,6 +5094,7 @@
     }).then(function (r) {
       lv.checks++;
       const verdict = r.blocked ? '' : parseVerdict(r.reply);
+      liveCheckSaw(r.reply);
       lv.log.push({ text: r.reply, verdict: verdict, sim: sim, step: lv.stepIndex + 1 });
       const logEl = $('#lv-log');
       if (logEl) logEl.innerHTML = liveLogHtml(lv);
@@ -5243,6 +5321,7 @@
         '<label class="lv-toggle lv-toggle-sm"><input type="checkbox" id="lv-sp"' + (lv.speech ? ' checked' : '') + ' />' +
           '<span>语音播报（建议开）</span></label>' +
       '</div>' +
+      livePhotoBarHtml(lv) +
       ttsControlsHtml({ compact: true }) +
       '<button class="btn primary" id="lv-go-live"' + (lv.pending ? ' disabled' : '') + '>' +
         (lv.pending ? '正在准备讲稿…' : '🔴 开始上课') + '</button>' +
@@ -5254,6 +5333,7 @@
     const sp = $('#lv-sp');
     if (sp) sp.addEventListener('change', function () { lectureState().speech = !!sp.checked; });
     bindTts(box);
+    bindLivePhoto(box);
 
     const go = $('#lv-go-live');
     if (go) go.addEventListener('click', lecturePrepare);
@@ -5337,13 +5417,16 @@
         '<button class="btn primary" id="lv-ask-send">举手</button>' +
         '<label class="lv-toggle lv-toggle-sm"><input type="checkbox" id="lv-auto2"' + (lv.autoOn ? ' checked' : '') + ' />' +
           '<span>它看我一眼（每 ' + Math.round(lv.autoMs / 1000) + ' 秒）</span></label>' +
-        '<button class="btn ghost" id="lv-lcheck"' + (lv.stream ? '' : ' disabled') + '>👀 让它看一眼</button>' +
+        '<button class="btn ghost" id="lv-lcheck">👀 让它看一眼</button>' +
       '</div>' +
+      livePhotoBarHtml(lv) +
       '<div class="lv-cam-mini">' +
         '<video id="lv-video" class="lv-video' + (lv.stream ? '' : ' is-off') + '" autoplay muted playsinline></video>' +
         (lv.stream ? '' : '<button class="btn ghost lv-cam-mini-btn" id="lv-cam-on">开摄像头</button>') +
       '</div>' +
-      '<p class="hint">已让 AI 看 <b>' + lv.checks + '</b> / ' + LIVE_MAX_CHECKS + ' 次</p>' +
+      '<p class="hint">已让 AI 看 <b>' + lv.checks + '</b> / ' + LIVE_MAX_CHECKS + ' 次' +
+        (lv.lastSaw === 'blind' ? '　·　⚠️ 上次它说看不清你的画面' : (lv.lastSaw === 'ok' ? '　·　✅ 上次收到了你的画面' : '')) +
+      '</p>' +
       '<div class="lv-log" id="lv-log">' + liveAskLogHtml(lv) + '</div>' +
     '</div>');
 
@@ -5394,6 +5477,7 @@
       b.addEventListener('click', function () { lectureGoto(Number(b.dataset.seg)); });
     });
     bindTts(box);
+    bindLivePhoto(box);
   }
 
   function liveAskLogHtml(lv) {
@@ -5429,6 +5513,7 @@
     V.askTutor({
       mode: 'ask',
       question: q,
+      image: lv.uploadImage || (lv.stream ? liveGrabFrame() : ''),
       lessonBrief: (lo ? tutorBrief(lo) : '').slice(0, 1200),
       practice: seg ? '老师刚讲到：' + seg : '',
       targetKind: 'lesson'
@@ -5457,11 +5542,12 @@
 
   function lectureCheck(auto) {
     const lv = lectureState();
-    if (!lv.stream) { if (!auto) toast('先开摄像头'); return; }
+    if (!liveHasView(lv)) { if (!auto) liveNeedView(); return; }
     if (lv.checks >= LIVE_MAX_CHECKS) { if (!auto) toast('检查次数用完了'); return; }
     const frame = liveGrabFrame();
     if (!frame) { if (!auto) toast('还拿不到画面'); return; }
     const seg = lv.script && lv.script[lv.idx];
+    lv.lastSentKB = Math.max(1, Math.round(frame.length * 0.75 / 1024));
     V.askTutor({
       mode: 'check',
       image: frame,
@@ -5471,6 +5557,8 @@
       target: lv.target.name
     }).then(function (r) {
       lv.checks++;
+      lv.lastSentKB = Math.max(1, Math.round(frame.length * 0.75 / 1024));
+      liveCheckSaw(r.reply);
       lv.askLog.push({ who: 'ai', text: r.reply });
       const el = $('#lv-log');
       if (el) el.innerHTML = liveAskLogHtml(lv);
@@ -5587,7 +5675,8 @@
       rerenderLive();
       return;
     }
-    const frame = lv.stream ? liveGrabFrame() : '';
+    const frame = liveHasView(lv) ? liveGrabFrame() : '';
+    if (frame) lv.lastSentKB = Math.max(1, Math.round(frame.length * 0.75 / 1024));
     lv.coachBusy = true;
     if (manual) toast('它正在看…');
 
@@ -5605,6 +5694,7 @@
       lv.checks++;
       const b = parseCoach(r.reply);
       lv.board = b;
+      if (frame) liveCheckSaw(r.reply);
       lv.lastHint = String(b.next || '').slice(0, 120);
 
       /* 它说这一步到位了 → 推进；已经是最后一步且确认完成 → 结课 */
