@@ -4250,7 +4250,9 @@
         profile: '', planText: '', plan: null, stepIndex: 0,
         stream: null, timer: null, autoMs: 20000, autoOn: false, speech: true,
         log: [], checks: 0, refAnalysis: null, lastSim: null,
-        pending: false, cameraError: '', camTried: false
+        pending: false, cameraError: '', camTried: false,
+        /* 手把手带练 */
+        coach: false, coachBusy: false, coachTimer: null, coachEvery: 15000, board: null, lastHint: ''
       };
     }
     return state.live;
@@ -4267,6 +4269,10 @@
     /* 直播课：停掉自动推进，并让旧的回调失效 */
     lv.playing = false;
     lv.seq = (lv.seq || 0) + 1;
+    /* 手把手带练：停掉定时器 */
+    if (lv.coachTimer) { try { clearInterval(lv.coachTimer); } catch (e) { } lv.coachTimer = null; }
+    lv.coach = false;
+    lv.coachBusy = false;
     try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { }
   }
 
@@ -4519,7 +4525,9 @@
           log: [], checks: 0, refAnalysis: null, lastSim: null,
           pending: false, cameraError: '', camTried: false, refImage: lv.refImage, refNote: lv.refNote,
           /* 直播课专用 */
-          script: null, idx: 0, playing: false, seq: 0, askLog: [], asking: false
+          script: null, idx: 0, playing: false, seq: 0, askLog: [], asking: false,
+          /* 手把手带练 */
+          coach: false, coachBusy: false, coachTimer: null, coachEvery: 15000, board: null, lastHint: ''
         };
       } else {
         lv.kind = '';
@@ -4784,6 +4792,9 @@
       (lv.cosMode ? '<b class="lv-cos-tag">cos · 尽量还原</b>' : '<b class="lv-normal-tag">日常 · 合适就好</b>') +
       '<a class="lv-back" href="#/live">← 换一个目标</a></p></div>');
 
+    /* 手把手带练面板（开着的时候放最上面） */
+    if (lv.coach) parts.push(coachBoardHtml(lv));
+
     /* 摄像头 */
     parts.push('<div class="card lv-cam-card">' +
       '<div class="lv-cam-wrap">' +
@@ -4796,11 +4807,8 @@
         '</div>' +
       '</div>' +
       '<div class="lv-cam-tools">' +
-        '<button class="btn primary" id="lv-look-now"' + (lv.stream ? '' : ' disabled') + '>👀 让它看一下</button>' +
-        '<label class="lv-toggle lv-toggle-sm">' +
-          '<input type="checkbox" id="lv-auto"' + (lv.autoOn ? ' checked' : '') + ' />' +
-          '<span>自动检查（每 ' + Math.round(lv.autoMs / 1000) + ' 秒）</span>' +
-        '</label>' +
+        (lv.coach ? '' : '<button class="btn primary" id="lv-coach-start">🔴 手把手带练</button>') +
+        '<button class="btn ghost" id="lv-look-now"' + (lv.stream || lv.coach ? '' : ' disabled') + '>👀 让它看一下</button>' +
         '<label class="lv-toggle lv-toggle-sm">' +
           '<input type="checkbox" id="lv-speech"' + (lv.speech ? ' checked' : '') + ' />' +
           '<span>语音播报</span>' +
@@ -4848,9 +4856,35 @@
 
     liveBindCamera(box);
     liveBindControls(box);
+    bindCoach(box);
 
     /* 进入上课自动尝试开摄像头（失败就显示按钮让人手动开） */
     if (!lv.stream) liveStartCamera();
+  }
+
+  /* 手把手带练的按钮绑定 */
+  function bindCoach(box) {
+    const start = box.querySelector('#lv-coach-start');
+    if (start) start.addEventListener('click', liveCoachStart);
+    const now = box.querySelector('#lv-coach-now');
+    if (now) now.addEventListener('click', function () { liveCoachTick(true); });
+    const stop = box.querySelector('#lv-coach-stop');
+    if (stop) stop.addEventListener('click', function () { liveCoachStop(false); toast('已停下带练'); });
+    const next = box.querySelector('#lv-coach-next');
+    if (next) next.addEventListener('click', function () {
+      const lv = liveState();
+      if (!lv.plan) return;
+      if (lv.stepIndex >= lv.plan.steps.length - 1) {
+        liveCoachStop(true);
+        liveFinish();
+        return;
+      }
+      lv.stepIndex++;
+      lv.lastHint = '';
+      lv.board = null;
+      liveCoachTick(false);
+      rerenderLive();
+    });
   }
 
   function liveLogHtml(lv) {
@@ -5496,6 +5530,142 @@
       md.disabled = true;
       md.textContent = '✓ 已学完';
     });
+  }
+
+  /* ============ 手把手带练（摄像头开着，它不停告诉你下一步） ============
+   * 和「让它看一下」的区别：
+   *   看一下 = 你点一次、它评论一次（被动）
+   *   带练   = 每隔十几秒它自己看一次，主动告诉你「现在就做这个」+ 一句理论 + 一句提醒，
+   *           并且由它判断这一步到位没有 → 到位就自动进下一步（手不用停）
+   * 没有摄像头也能用：就按计划一步步讲，只是它不能判断你做到没有。
+   */
+  function parseCoach(text) {
+    const s = String(text || '');
+    const get = function (label) {
+      const m = s.match(new RegExp(label + '\\s*[:：]\\s*([^\\n]*)'));
+      return m ? m[1].trim() : '';
+    };
+    let progress = get('进度');
+    if (progress.indexOf('全部完成') >= 0) progress = '全部完成';
+    else if (progress.indexOf('下一步') >= 0) progress = '进入下一步';
+    else progress = '继续';
+    return { progress: progress, next: get('下一步'), why: get('为什么'), tip: get('提醒') };
+  }
+
+  function liveCoachStart() {
+    const lv = liveState();
+    if (!lv.plan || !lv.plan.steps.length) { toast('先备一次课'); return; }
+    lv.coach = true;
+    lv.coachBusy = false;
+    lv.board = null;
+    lv.lastHint = '';
+    lv.coachEvery = lv.coachEvery || 15000;
+    if (!lv.stream) liveStartCamera();
+    if (lv.coachTimer) clearInterval(lv.coachTimer);
+    lv.coachTimer = setInterval(function () { liveCoachTick(false); }, lv.coachEvery);
+    rerenderLive();
+    /* 第一轮稍等一下再发：让摄像头先连上，否则第一句只会是「看不到你的脸」 */
+    setTimeout(function () {
+      const st = liveState();
+      if (st.coach) liveCoachTick(false);
+    }, 900);
+  }
+
+  function liveCoachStop(silent) {
+    const lv = liveState();
+    lv.coach = false;
+    lv.coachBusy = false;
+    if (lv.coachTimer) { try { clearInterval(lv.coachTimer); } catch (e) { } lv.coachTimer = null; }
+    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { }
+    if (!silent) rerenderLive();
+  }
+
+  function liveCoachTick(manual) {
+    const lv = liveState();
+    if (!lv.coach && !manual) return;
+    if (lv.coachBusy) return;
+    if (!lv.plan) return;
+    if (lv.checks >= LIVE_MAX_CHECKS) {
+      liveCoachStop(true);
+      toast('这次带练的查看次数用完了（' + LIVE_MAX_CHECKS + ' 次）');
+      rerenderLive();
+      return;
+    }
+    const frame = lv.stream ? liveGrabFrame() : '';
+    lv.coachBusy = true;
+    if (manual) toast('它正在看…');
+
+    V.askTutor({
+      mode: 'coach',
+      plan: planBrief(lv.plan),
+      stepIndex: lv.stepIndex,
+      image: frame,
+      target: (lv.target && lv.target.name) || '',
+      targetKind: (lv.target && lv.target.kind) || 'look',
+      cosMode: !!lv.cosMode,
+      prevAnswer: lv.lastHint || ''
+    }).then(function (r) {
+      lv.coachBusy = false;
+      lv.checks++;
+      const b = parseCoach(r.reply);
+      lv.board = b;
+      lv.lastHint = String(b.next || '').slice(0, 120);
+
+      /* 它说这一步到位了 → 推进；已经是最后一步且确认完成 → 结课 */
+      if (b.progress !== '继续') {
+        if (lv.stepIndex >= lv.plan.steps.length - 1) {
+          if (b.progress === '全部完成') {
+            liveCoachStop(true);
+            toast('✅ 全部完成，收工');
+            liveFinish();
+            return;
+          }
+        } else {
+          lv.stepIndex++;
+        }
+      }
+
+      const say = (b.next || '') +
+        (b.why && b.why !== '无' ? '。为什么：' + b.why : '') +
+        (b.tip && b.tip !== '无' ? '。注意：' + b.tip : '');
+      if (say) liveSpeak(say);
+      rerenderLive();
+    }).catch(function (e) {
+      lv.coachBusy = false;
+      toast((e && e.message) || '这一轮没看成');
+      rerenderLive();
+    });
+  }
+
+  /* 带练面板 */
+  function coachBoardHtml(lv) {
+    const b = lv.board;
+    const total = (lv.plan && lv.plan.steps.length) || 0;
+    const progLabel = b ? (b.progress === '全部完成' ? '✅ 全部完成'
+      : b.progress === '进入下一步' ? '➡️ 已进入下一步' : '⏳ 这一步继续') : '';
+    return '<div class="card lv-coach">' +
+      '<div class="lv-stage-top">' +
+        '<span class="lv-live-dot"></span><b>手把手带练中</b>' +
+        '<span class="lv-stage-prog">第 ' + (Math.min(lv.stepIndex + 1, total)) + ' / ' + total + ' 步 · 每 ' +
+          Math.round((lv.coachEvery || 15000) / 1000) + ' 秒看一次</span>' +
+      '</div>' +
+      '<div class="lv-board">' +
+        '<span class="lv-board-type">👉 现在就做这个</span>' +
+        '<p class="lv-board-text">' +
+          (b && b.next ? escapeHtml(b.next) : (lv.coachBusy ? '它正在看…' : '打开摄像头或点「现在就看」，它马上告诉你第一步做什么。')) +
+        '</p>' +
+      '</div>' +
+      (b && b.why && b.why !== '无' ? '<p class="lv-why">💡 为什么：' + escapeHtml(b.why) + '</p>' : '') +
+      (b && b.tip && b.tip !== '无' ? '<p class="lv-tip">⚠️ 提醒：' + escapeHtml(b.tip) + '</p>' : '') +
+      (progLabel ? '<p class="lv-coach-prog">' + progLabel + (lv.stream ? '' : '（没开摄像头，它没法判断你做到没有）') + '</p>' : '') +
+      '<div class="lv-ctrl">' +
+        '<button class="btn ghost" id="lv-coach-now"' + (lv.coachBusy ? ' disabled' : '') + '>👀 现在就看</button>' +
+        '<button class="btn ghost" id="lv-coach-next"' + (lv.stepIndex >= total - 1 ? ' disabled' : '') + '>✅ 这步好了，下一步</button>' +
+        '<button class="btn ghost" id="lv-coach-stop">⏸ 停下带练</button>' +
+      '</div>' +
+      '<p class="hint">已看 <b>' + lv.checks + '</b> / ' + LIVE_MAX_CHECKS + ' 次' +
+        (lv.stream ? '' : '　·　没开摄像头也能带，只是它不能判断你做到没有') + '</p>' +
+    '</div>';
   }
 
   /* ============ 初始化 ============ */

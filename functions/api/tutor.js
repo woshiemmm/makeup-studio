@@ -54,7 +54,8 @@ const MODE_TOKENS = {
   review: 900,
   plan: 1600,
   check: 500,
-  lecture: 2400      // 直播课：一次生成整节讲稿
+  lecture: 2400,     // 直播课：一次生成整节讲稿
+  coach: 600         // 手把手带练：每轮「下一步+为什么+提醒」
 };
 
 /* 固定拒答话术：预处理层和系统提示词共用，保证说法一致 */
@@ -187,7 +188,7 @@ export async function onRequestPost(context) {
   if (!payload || typeof payload !== 'object') return fail('请求体格式不对。', 400, env, 'BAD_PAYLOAD');
 
   /* ---- 取字段（只认这几个，其余一律忽略：前端塞 messages / system 都没用） ---- */
-  const MODES = ['ask', 'review', 'plan', 'check', 'lecture'];
+  const MODES = ['ask', 'review', 'plan', 'check', 'lecture', 'coach'];
   const mode = MODES.indexOf(payload.mode) >= 0 ? payload.mode : 'ask';
   const lessonId = /^l\d{2}$/.test(String(payload.lessonId || '')) ? String(payload.lessonId) : '';
   const question = cleanText(payload.question, LIMIT.question);
@@ -204,6 +205,7 @@ export async function onRequestPost(context) {
   const TARGET_KINDS = ['look', 'lesson', 'restore', 'search', 'ref'];
   const targetKind = TARGET_KINDS.indexOf(payload.targetKind) >= 0 ? payload.targetKind : 'look';
   const isLesson = targetKind === 'lesson';
+  const isCoach = mode === 'coach';
 
   /* 各模式的最低要求：备课要有目标，看画面要有图和计划 */
   if (mode === 'plan' && !target) {
@@ -212,13 +214,16 @@ export async function onRequestPost(context) {
   if (mode === 'lecture' && !target && !lessonBrief) {
     return fail('缺少要讲的课程内容。', 400, env, 'NO_TARGET');
   }
+  if (mode === 'coach' && !plan) {
+    return fail('缺少教学计划，先备一次课。', 400, env, 'NO_PLAN');
+  }
   if (mode === 'check' && !image) {
     return fail('看画面需要一张照片。', 400, env, 'NO_IMAGE');
   }
   if (mode === 'check' && !plan) {
     return fail('缺少教学计划，先备一次课。', 400, env, 'NO_PLAN');
   }
-  if (mode !== 'plan' && mode !== 'check' && mode !== 'lecture' && !question && !practice && !image) {
+  if (mode !== 'plan' && mode !== 'check' && mode !== 'lecture' && mode !== 'coach' && !question && !practice && !image) {
     return fail('先说说你练了什么，或者直接问个问题。', 400, env, 'EMPTY');
   }
   if (image) {
@@ -254,11 +259,29 @@ export async function onRequestPost(context) {
   if (profile) parts.push(block('学员个人条件', profile));
   if (plan) parts.push(block('教学计划', plan));
   if (practice) parts.push(block('学员操作', practice));
-  if (prevAnswer) parts.push(block('上一轮你的回答', prevAnswer));
+  if (prevAnswer) parts.push(block(isCoach ? '上一轮你的提示' : '上一轮你的回答', prevAnswer));
   if (question) parts.push(block('学员提问', question));
 
   let task;
-  if (mode === 'lecture') {
+  if (mode === 'coach') {
+    /* 手把手带练：每轮只给「现在做这一个动作」+ 一点理论 + 一句提醒 */
+    task = '现在是**实时手把手带练**。你正看着学员的脸（也可能看不到），要像站在他旁边一样，' +
+      '不停告诉他「现在做这一个动作」。\n' +
+      '"教学计划"是要教的流程，当前进行到第 ' + (stepIndex + 1) + ' 步。' +
+      '"上一轮你的提示"是你上次说的话 —— 别重复它，要往前推。\n' +
+      '\n严格按下面 4 行输出，每行以标签加中文冒号开头，不要加任何别的内容、不要 markdown：\n' +
+      '进度：继续 / 进入下一步 / 全部完成（三选一）\n' +
+      '下一步：让学员现在马上做的一个动作（给位置、用量、方向），20~40 字\n' +
+      '为什么：这个动作为什么这么做（一句理论，40 字以内）\n' +
+      '提醒：这个动作最容易错在哪（一句，没有就写「无」）\n' +
+      '\n必须遵守：\n' +
+      '- 只给一个动作，不要一次给三个步骤；\n' +
+      '- 看不到脸、或看不清关键部位（太暗、太远、偏到画面外）→ 进度写「继续」，' +
+      '"下一步"改成让他把脸移到画面中间 / 把光打开 / 靠近一点，**不要瞎猜他画成什么样**；\n' +
+      '- 只有确实看得出这一步已经做到位了，"进度"才写「进入下一步」；\n' +
+      '- 走完最后一步且确认完成，才写「全部完成」；\n' +
+      '- "为什么"必须是化妆原理（为什么这样贴、为什么这样显立体），不要写"因为这样好看"。';
+  } else if (mode === 'lecture') {
     /* 直播课：把课程内容变成一份能直接开口念的讲稿 */
     task = '现在你要**上一节直播课**。学员坐在屏幕前听你讲，然后照着做。\n' +
       '请把"课程资料"里的内容，改成一份**可以直接开口念出来的讲稿**：' +
@@ -336,7 +359,7 @@ export async function onRequestPost(context) {
    */
   const MODEL = String(env.TUTOR_MODEL || env.ALLOWED_MODELS || 'deepseek-flash')
     .split(',')[0].trim() || 'deepseek-flash';
-  const TEMP = mode === 'plan' ? 0.6 : (mode === 'check' ? 0.3 : (mode === 'lecture' ? 0.7 : 0.5));
+  const TEMP = mode === 'plan' ? 0.6 : (mode === 'check' ? 0.3 : (mode === 'lecture' ? 0.7 : (mode === 'coach' ? 0.4 : 0.5)));
 
   /* 从 message 里取正文：兼容 string / 数组分段 / content 为空但只有思考 */
   function extractAnswer(message) {
