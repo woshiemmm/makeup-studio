@@ -5512,7 +5512,10 @@
           lo.checklist.map(function (c) { return '<li>' + escapeHtml(c) + '</li>'; }).join('') + '</ul>'
         : '') +
       '<div class="lv-finish-actions">' +
-        '<a class="btn primary" href="#/course/' + escapeHtml(lv.target.lessonId || '') + '">回到这一课</a>' +
+        (lv.target.lessonId
+          ? '<a class="btn primary" href="#/live/lesson/' + escapeHtml(lv.target.lessonId) + '">🔴 接着手把手练（会先备一次课）</a>'
+          : '') +
+        '<a class="btn ghost" href="#/course/' + escapeHtml(lv.target.lessonId || '') + '">回到这一课</a>' +
         '<button class="btn ghost" id="lv-mark-done">标记这节学完</button>' +
         '<a class="btn ghost" href="#/live">换一节</a>' +
       '</div>' +
